@@ -1,4 +1,4 @@
-# CTAO LST-1: summary of the telescope
+# CTAO LST: summary of the telescope (based on LST-1)
 
 LST-1 is the first Large-Sized Telescope of the Cherenkov Telescope Array Observatory (CTAO). It sits at the Roque de los Muchachos Observatory, La Palma. The camera went in on 25 September 2018 and the telescope was inaugurated on 10 October 2018.
 

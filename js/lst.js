@@ -1,4 +1,4 @@
-// CTAO Large-Sized Telescope (LST) model. See LST-1_summary.md for the numbers.
+// CTAO Large-Sized Telescope (LST) model. See LST_summary.md for the numbers.
 // buildLST(M) returns { root, az, el, ... }; root sits at ground level on the azimuth axis,
 // north is -Z, the dish faces local -Z at elevation 0.
 

@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LST 3D Model</title>
+<meta name="description" content="Interactive 3D model of CTAO&#x27;s 23 m Large-Sized Telescope (LST).">
+<meta property="og:type" content="website">
+<meta property="og:title" content="LST in 3D">
+<meta property="og:description" content="Interactive 3D model of CTAO&#x27;s 23 m Large-Sized Telescope (LST).">
+<meta property="og:url" content="https://vuillaut.github.io/ctao-3d-rendering/lst.html">
+<meta property="og:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-lst.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="LST in 3D">
+<meta name="twitter:description" content="Interactive 3D model of CTAO&#x27;s 23 m Large-Sized Telescope (LST).">
+<meta name="twitter:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-lst.png">
+<style>
+  :root {
+    --bg: #0d1a3a;
+    --panel: rgba(12, 20, 40, 0.86);
+    --text: #e4e9f2;
+    --muted: #93a0b8;
+    --accent: #5cc8ff;
+    --border: rgba(255, 255, 255, 0.14);
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+  #controls { top: 16px; left: 16px; width: 260px; max-width: calc(100vw - 64px); }
+  #info { bottom: 16px; left: 16px; width: 360px; max-width: calc(100vw - 64px); }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  label { display: block; margin: 6px 0; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  button { background: transparent; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit; font-size: 13px; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #info h2 { font-size: 14px; margin: 0 0 4px; color: var(--accent); }
+  #info p { margin: 0; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  @media (max-width: 600px) {
+    #controls { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; }
+    #info { left: 8px; right: 8px; bottom: 8px; width: auto; max-width: none; }
+    .optional { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="view"></div>
+
+<div id="controls" class="panel">
+  <h1>CTAO LST</h1>
+  <div class="sub">23 m dish · f = 28 m · 198 facets · 1855-pixel camera</div>
+  <label>Azimuth: <span id="azv">0</span>°
+    <input id="az" type="range" min="0" max="360" step="1" value="0"></label>
+  <label>Elevation: <span id="elv">35</span>°
+    <input id="el" type="range" min="-5" max="90" step="1" value="0"></label>
+  <div class="row">
+    <button data-goto="-5,0">Park</button>
+    <button data-goto="90,null">Zenith</button>
+    <button id="slew">Fast slew (GRB)</button>
+  </div>
+  <div class="optional">
+    <label class="check"><input type="checkbox" id="tMirrors" checked> Mirror facets</label>
+    <label class="check"><input type="checkbox" id="tFrame" checked> Dish space frame</label>
+    <label class="check"><input type="checkbox" id="tArch" checked> Camera arch and ropes</label>
+    <label class="check"><input type="checkbox" id="tRays"> Light rays to focus</label>
+    <label class="check"><input type="checkbox" id="tEvents" checked> Simulated shower images</label>
+  </div>
+  <div class="row"><button id="camView">Look at camera</button><button id="overview">Overview</button></div>
+</div>
+
+<div id="info" class="panel">
+  <h2 id="infoTitle">Click a part</h2>
+  <p id="infoText">Drag to orbit, scroll to zoom, right-drag to pan. Click any part of the telescope to see what it does.</p>
+  <div class="hint">Dish size, focal length, facet count and camera pixels follow published values. Mount, arc, towers and rail are shaped after photos, with estimated dimensions.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/lstcam.js"></script>
+<script>
+// ---- Published dimensions (see LST_summary.md) ----
+const F = 28;               // focal length, m
+const N_FACETS = 198;
+const FACET_FLAT = 1.51;    // flat-to-flat, m
+const N_PIX = 1855;
+const PIX_PITCH = 0.05;     // ~0.1 deg at 28 m
+// ---- Estimated from photos ----
+const PIVOT_H = 14.5;       // elevation axle height
+const DISH_Z = -1.5;        // dish vertex, local to the axle
+const FRAME_DEPTH = 2.6;
+const RIM_R = 12.2;         // outer radius of the dish frame
+const BEARING_X = 12.9;     // elevation bearings, just outside the dish
+const TOWER_OUT = 15.6;
+const TOWER_Z = 7;          // half-depth of tower at the base
+const ARC_R = 13;           // elevation drive arc, centred on the axle
+const CAM_Z = DISH_Z - F;
+
+const INFO = {
+  mirrors: ['Mirror facets (198)', 'Hexagonal facets about 1.5 m flat-to-flat on a 23 m paraboloid with 28 m focal length. A parabola keeps all light paths to the focus the same length, so the nanosecond Cherenkov flash stays short. The centre position is left open. Each facet has motorised actuators driven by the Active Mirror Control, which re-aligns the facets about every 10 s as the dish bends.'],
+  frame: ['Dish space frame', 'A tetrahedral frame of tubes joined with MERO nodes. The 2013 design specified carbon-fibre tubes of 80–100 mm diameter instead of steel to keep the moving mass low (design target 60–65 t), which allows fast slewing.'],
+  arch: ['Camera support arch', 'A single arched tube springs from the top and bottom of the dish rim and carries the camera at the focal point, 28 m away. It is built light to limit weight and the shadow it casts on the mirror. A fan of tension ropes (28 on LST-1) ties it to the dish rim and keeps it stiff.'],
+  camera: ['Camera', '1855 photomultiplier pixels in 265 modules of 7, with light guides and GHz-sampling readout. Field of view 4.5°, light-sensitive area about 2.2 m across, mass under 2 t. It moves on rails so it can be shifted along the axis and unloaded for maintenance.'],
+  calibox: ['CaliBox', 'Calibration light source at the centre of the dish. It flashes the camera 28 m away to calibrate pixel gains and timing.'],
+  elev: ['Elevation drive arc', 'A large circular arc fixed under the dish and centred on the elevation axle. Drives at the base push along it to tilt the dish from park (95° zenith angle) up to the zenith.'],
+  towers: ['Azimuth structure', 'A steel lattice frame with two tapered side towers. The elevation bearings and service platforms sit on top of the towers, and the whole frame turns with the telescope.'],
+  base: ['Bogies and azimuth rail', 'The structure rides on wheeled bogies on a circular rail. An LST is built to slew 180° in about 20 s so it can catch gamma-ray bursts early. Rail radius in this model is an estimate.'],
+  access: ['Camera access tower', 'A fixed tower with stairs and a work cabin. With the telescope parked, the camera sits next to its top platform for maintenance.'],
+  ground: ['Roque de los Muchachos, La Palma', 'LST site at about 2200 m altitude, on the CTAO northern array site.'],
+};
+
+// ---- Renderer, scene, camera ----
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8fa8d6, 150, 520);
+
+const cam = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 2000);
+const controls = new THREE.OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+
+// ---- Twilight sky: gradient dome, stars, environment map for the mirrors ----
+function skyDome(radius) {
+  return new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(0x0f2a6b) }, mid: { value: new THREE.Color(0x4a74c4) }, horizon: { value: new THREE.Color(0xb9c9e6) } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform vec3 top, mid, horizon; varying vec3 vP; void main(){ float h = max(vP.y, 0.0); vec3 c = mix(horizon, mid, smoothstep(0.0, 0.25, h)); c = mix(c, top, smoothstep(0.25, 1.0, h)); if (vP.y < 0.0) c = mix(horizon, vec3(0.32,0.38,0.5), smoothstep(0.0,-0.2,vP.y)); gl_FragColor = vec4(c, 1.0); }',
+  }));
+}
+scene.add(skyDome(900));
+{
+  const n = 3000, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * Math.PI * 2, y = 0.08 + Math.random() * 0.92, r = Math.sqrt(1 - y * y);
+    pos.set([850 * r * Math.cos(u), 850 * y, 850 * r * Math.sin(u)], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85 })));
+}
+{
+  // equirectangular gradient matching the dome, so the facets reflect a blue twilight sky
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const g = c.getContext('2d'), grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#0f2a6b'); grad.addColorStop(0.3, '#3d66b8'); grad.addColorStop(0.49, '#b9c9e6');
+  grad.addColorStop(0.52, '#55604a'); grad.addColorStop(1, '#2c3324');
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.encoding = THREE.sRGBEncoding;
+  scene.environment = new THREE.PMREMGenerator(renderer).fromEquirectangular(tex).texture;
+}
+
+scene.add(new THREE.HemisphereLight(0xb8cdf5, 0x3c4630, 0.55));
+const moon = new THREE.DirectionalLight(0xdfe8ff, 1.3);
+moon.position.set(-60, 80, -40);
+moon.castShadow = true;
+moon.shadow.mapSize.set(4096, 4096);
+moon.shadow.bias = -0.0005;
+Object.assign(moon.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, far: 300 });
+scene.add(moon);
+
+// ---- Materials ----
+const M = {
+  white: new THREE.MeshStandardMaterial({ color: 0xe8eaed, metalness: 0.25, roughness: 0.5 }),
+  grey: new THREE.MeshStandardMaterial({ color: 0xa9afb6, metalness: 0.45, roughness: 0.45 }),
+  red: new THREE.MeshStandardMaterial({ color: 0x5e0d10, metalness: 0.35, roughness: 0.6 }),
+  mirror: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.16 }),
+  mirrorBack: new THREE.MeshStandardMaterial({ color: 0x9da3aa, metalness: 0.3, roughness: 0.6 }),
+  camera: new THREE.MeshStandardMaterial({ color: 0xf1f3f4, metalness: 0.15, roughness: 0.45 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x14171c, metalness: 0.2, roughness: 0.35 }),
+  rope: new THREE.LineBasicMaterial({ color: 0xc9d1dc, transparent: true, opacity: 0.75 }),
+  rail: new THREE.LineBasicMaterial({ color: 0xb8bec6 }),
+};
+
+// ---- Helpers ----
+const UP = new THREE.Vector3(0, 1, 0);
+const unitCyl = new THREE.CylinderGeometry(1, 1, 1, 8);
+const v = (x, y, z) => new THREE.Vector3(x, y, z);
+
+// One InstancedMesh for many tubes: segs = [[a, b], ...]
+function tubes(segs, radius, mat) {
+  const mesh = new THREE.InstancedMesh(unitCyl, mat, segs.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), mid = new THREE.Vector3(), dir = new THREE.Vector3();
+  segs.forEach(([a, b], i) => {
+    dir.subVectors(b, a);
+    const len = dir.length();
+    q.setFromUnitVectors(UP, dir.normalize());
+    mid.addVectors(a, b).multiplyScalar(0.5);
+    m.compose(mid, q, s.set(radius, len, radius));
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.castShadow = mesh.receiveShadow = true;
+  return mesh;
+}
+const lines = (pts, mat) => new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), mat);
+function box(w, h, d, mat, x, y, z) {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  b.position.set(x, y, z);
+  b.castShadow = b.receiveShadow = true;
+  return b;
+}
+// Rectangular railing around [x0,x1]×[z0,z1] at height y
+function railing(x0, x1, z0, z1, y, h = 1.1) {
+  const pts = [], c = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+  for (let i = 0; i < 4; i++) {
+    const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4];
+    for (const t of [h, h / 2]) pts.push(v(ax, y + t, az), v(bx, y + t, bz));
+    const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 1.5));
+    for (let k = 0; k < n; k++) {
+      const x = ax + (bx - ax) * k / n, z = az + (bz - az) * k / n;
+      pts.push(v(x, y, z), v(x, y + h, z));
+    }
+  }
+  return lines(pts, M.rail);
+}
+// Lattice box with X-bracing. Corners interpolate from a base to a top footprint.
+function lattice(xa, xb, zBase, zTop, y0, y1, levels) {
+  const segs = [];
+  const ring = (i) => {
+    const t = i / levels, y = y0 + (y1 - y0) * t, z = zBase + (zTop - zBase) * t;
+    return [v(xa, y, -z), v(xb, y, -z), v(xb, y, z), v(xa, y, z)];
+  };
+  for (let i = 0; i <= levels; i++) {
+    const r = ring(i);
+    for (let k = 0; k < 4; k++) segs.push([r[k], r[(k + 1) % 4]]);
+    if (i === 0) continue;
+    const p = ring(i - 1);
+    for (let k = 0; k < 4; k++) {
+      const k2 = (k + 1) % 4;
+      segs.push([p[k], r[k]], [p[k], r[k2]], [p[k2], r[k]]);
+    }
+  }
+  return segs;
+}
+// Hex grid with neighbours along ±x, trimmed to the n cells nearest the centre
+function hexGrid(pitch, n, skipCentre = false) {
+  const R = Math.ceil(Math.sqrt(n)) + 2, pts = [];
+  for (let j = -R; j <= R; j++)
+    for (let i = -R; i <= R; i++) {
+      if (skipCentre && i === 0 && j === 0) continue;
+      const x = pitch * (i + j / 2), y = pitch * j * Math.sqrt(3) / 2;
+      pts.push([x, y, Math.hypot(x, y) + 1e-6 * Math.atan2(y, x)]);
+    }
+  return pts.sort((a, b) => a[2] - b[2]).slice(0, n);
+}
+const surfZ = (x, y) => DISH_Z - (x * x + y * y) / (4 * F);
+const tagged = (obj, key) => { obj.userData.info = key; return obj; };
+
+// ---- Hierarchy: world > azimuth > elevation ----
+const azGroup = new THREE.Group();
+scene.add(azGroup);
+const elGroup = new THREE.Group();
+elGroup.position.y = PIVOT_H;
+azGroup.add(elGroup);
+
+// ---- Mirrors (centre position left open, as on the LSTs) ----
+const facetPts = hexGrid(FACET_FLAT, N_FACETS, true);
+const facetR = FACET_FLAT / Math.sqrt(3) * 0.975;
+const facetGeo = new THREE.CylinderGeometry(facetR, facetR, 0.05, 6);
+facetGeo.rotateX(Math.PI / 2);
+const focus = v(0, 0, CAM_Z);
+const mirrors = tagged(new THREE.Group(), 'mirrors');
+{
+  // CylinderGeometry groups: 0 = side, 1 = top cap, 2 = bottom cap.
+  // After rotateX(+90°) the bottom cap faces -Z, toward the camera, so it gets the mirror material.
+  const front = new THREE.InstancedMesh(facetGeo, [M.mirrorBack, M.mirrorBack, M.mirror], facetPts.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+  facetPts.forEach(([x, y], i) => {
+    const p = v(x, y, surfZ(x, y));
+    const n = v(0, 0, -1).add(focus.clone().sub(p).normalize()).normalize();
+    q.setFromUnitVectors(v(0, 0, -1), n);
+    m.compose(p, q, v(1, 1, 1));
+    front.setMatrixAt(i, m);
+  });
+  front.castShadow = front.receiveShadow = true;
+  mirrors.add(front);
+}
+elGroup.add(mirrors);
+
+// ---- Dish space frame (white) ----
+const frame = tagged(new THREE.Group(), 'frame');
+const N_SPOKE = 30;
+const node = (r, k, back) => {
+  const a = (k / N_SPOKE) * Math.PI * 2, x = r * Math.cos(a), y = r * Math.sin(a);
+  return v(x, y, surfZ(x, y) + 0.3 + (back ? FRAME_DEPTH * (1 - 0.45 * r / RIM_R) : 0));
+};
+{
+  const radii = [1.8, 4.2, 6.6, 9.0, 11.0, RIM_R], segs = [];
+  radii.forEach((r, ri) => {
+    for (let k = 0; k < N_SPOKE; k++) {
+      const f0 = node(r, k, 0), f1 = node(r, k + 1, 0), b0 = node(r, k, 1), b1 = node(r, k + 1, 1);
+      segs.push([f0, f1], [b0, b1], [f0, b0], [f0, b1], [b0, f1]);
+      if (ri > 0) {
+        const pr = radii[ri - 1];
+        segs.push([node(pr, k, 0), f0], [node(pr, k, 1), b0], [node(pr, k, 1), f0], [node(pr, k + 1, 0), b0]);
+      }
+    }
+  });
+  frame.add(tubes(segs, 0.05, M.white));
+  // main girders from the bearings into the dish
+  const g = [];
+  for (const s of [-1, 1]) {
+    const b = v(s * BEARING_X, 0, 0);
+    const k0 = s > 0 ? 0 : N_SPOKE / 2;
+    for (const dk of [-2, -1, 0, 1, 2]) g.push([b, node(RIM_R, k0 + dk, 1)], [b, node(9.0, k0 + dk, 1)]);
+    g.push([b, node(RIM_R, k0, 0)]);
+  }
+  frame.add(tubes(g, 0.14, M.white));
+  // axle stubs
+  frame.add(tubes([[v(-BEARING_X - 0.5, 0, 0), v(-BEARING_X + 0.6, 0, 0)], [v(BEARING_X - 0.6, 0, 0), v(BEARING_X + 0.5, 0, 0)]], 0.45, M.grey));
+}
+elGroup.add(frame);
+
+// ---- Elevation drive arc: twin circular chords under the dish, centred on the axle ----
+const elevArc = tagged(new THREE.Group(), 'elev');
+{
+  const segs = [], aMin = -100, aMax = 90, n = 48;
+  const P = (a, x) => { const r = a * Math.PI / 180; return v(x, ARC_R * Math.sin(r), ARC_R * Math.cos(r)); };
+  for (let i = 0; i <= n; i++) {
+    const a = aMin + (aMax - aMin) * i / n;
+    const L = P(a, -0.9), R = P(a, 0.9), Li = P(a, -0.6).multiplyScalar(0.93), Ri = P(a, 0.6).multiplyScalar(0.93);
+    Li.x = -0.6; Ri.x = 0.6;
+    segs.push([L, R], [Li, Ri], [L, Li], [R, Ri]);
+    if (i > 0) {
+      const ap = aMin + (aMax - aMin) * (i - 1) / n;
+      const Lp = P(ap, -0.9), Rp = P(ap, 0.9);
+      segs.push([Lp, L], [Rp, R], [Lp, R]);
+      // spokes back to the dish frame every few panels
+      if (i % 4 === 0) {
+        const r = ARC_R * Math.sin(a * Math.PI / 180) * 0.6;
+        const hub = v(0, r, surfZ(0, r) + 0.3 + FRAME_DEPTH * (1 - 0.45 * Math.abs(r) / RIM_R));
+        segs.push([L, hub], [R, hub]);
+      }
+    }
+  }
+  // tie the arc ends to the dish rim
+  segs.push([P(aMax, 0), node(RIM_R, N_SPOKE / 4, 1)], [P(aMin, 0), node(RIM_R, 3 * N_SPOKE / 4, 1)]);
+  elevArc.add(tubes(segs, 0.07, M.white));
+}
+elGroup.add(elevArc);
+
+// ---- CaliBox in the central opening ----
+const calibox = tagged(box(0.6, 0.6, 0.5, M.grey, 0, 0, DISH_Z + 0.1), 'calibox');
+elGroup.add(calibox);
+
+// ---- Camera support: one arched tube plus a fan of ropes ----
+const arch = tagged(new THREE.Group(), 'arch');
+const CAM_HALF = 1.5;
+{
+  // The arch lies in the vertical plane of the optical axis (local y-z), springing from the top and
+  // bottom of the rim. Its profile is close to a parabola with the camera at the vertex.
+  const footZ = surfZ(0, 11.7) + 0.2, topZ = CAM_Z - 1.0, archPts = [];
+  for (let i = 0; i <= 40; i++) {
+    const s = -1 + 2 * i / 40, u = 1 - s * s;                 // u: 0 at the feet, 1 at the camera
+    archPts.push(v(0, 11.7 * s * (1 + 0.25 * u), footZ + (topZ - footZ) * u));
+  }
+  const curve = new THREE.CatmullRomCurve3(archPts);
+  const archMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 240, 0.28, 12, false), M.white);
+  archMesh.castShadow = true;
+  arch.add(archMesh);
+
+  // ropes: from points along each arch leg to points around the rim, forming a web
+  const rim = (deg) => { const a = deg * Math.PI / 180, x = 11.6 * Math.cos(a), y = 11.6 * Math.sin(a); return v(x, y, surfZ(x, y) - 0.1); };
+  const pts = [];
+  const nRope = 9;
+  for (let i = 1; i <= nRope; i++) {
+    const t = 0.06 + 0.37 * i / nRope;               // along the left leg
+    for (const leg of [t, 1 - t]) {
+      const p = curve.getPointAt(leg), side = leg < 0.5 ? -1 : 1;
+      const spread = 25 + 130 * i / nRope;           // ropes higher on the arch land further round the rim
+      for (const s of [1, -1]) {
+        const deg = side < 0 ? 270 + s * spread : 90 - s * spread;
+        pts.push(p, rim(deg));
+      }
+    }
+  }
+  // camera to top and bottom of the rim
+  for (const d of [-10, 0, 10, 170, 180, 190]) pts.push(v(Math.sign(Math.cos(d * Math.PI / 180)) * CAM_HALF, 0, CAM_Z - 0.2), rim(d));
+  arch.add(lines(pts, M.rope));
+}
+elGroup.add(arch);
+
+// ---- Camera ----
+const cameraGroup = tagged(new THREE.Group(), 'camera');
+{
+  const body = box(2 * CAM_HALF, 2 * CAM_HALF, 1.4, M.camera, 0, 0, CAM_Z - 0.75);
+  cameraGroup.add(body);
+  // rounded edges: thin cylinders on the four long edges
+  const e = [];
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]])
+    e.push([v(sx * CAM_HALF, sy * CAM_HALF, CAM_Z - 0.05), v(sx * CAM_HALF, sy * CAM_HALF, CAM_Z - 1.45)]);
+  cameraGroup.add(tubes(e, 0.08, M.camera));
+  cameraGroup.add(box(2.6, 2.6, 0.06, M.dark, 0, 0, CAM_Z - 0.02));
+  cameraGroup.add(box(2.0, 2.0, 0.6, M.camera, 0, 0, CAM_Z - 1.7)); // rear electronics housing
+}
+// Pixel positions from the prod6 LSTCam description (js/lstcam.js).
+const pixPts = lstcamPoints(), pixRot = LSTCAM_ROT;
+console.assert(pixPts.length === N_PIX, 'camera pixel count');
+const pixR = PIX_PITCH / Math.sqrt(3) * 0.94;
+const pixGeo = new THREE.CylinderGeometry(pixR, pixR * 0.6, 0.04, 6); // tapered like a light guide
+pixGeo.rotateX(Math.PI / 2);
+const pixels = new THREE.InstancedMesh(pixGeo, new THREE.MeshBasicMaterial(), pixPts.length);
+{
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(v(0, 0, 1), pixRot);
+  pixPts.forEach(([x, y], i) => { m.compose(v(x, y, CAM_Z + 0.03), q, v(1, 1, 1)); pixels.setMatrixAt(i, m); });
+}
+cameraGroup.add(pixels);
+// round entrance window over the hexagonal pixel array
+{
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(1.3, 72),
+    new THREE.MeshStandardMaterial({ color: 0xdfe9f5, metalness: 0.6, roughness: 0.05, transparent: true, opacity: 0.18, depthWrite: false }));
+  glass.position.set(0, 0, CAM_Z + 0.09);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.32, 0.05, 8, 72), M.dark);
+  rim.position.copy(glass.position);
+  cameraGroup.add(glass, rim);
+}
+elGroup.add(cameraGroup);
+
+// ---- Light rays (parallel in, reflected to focus) ----
+const rays = new THREE.Group();
+{
+  const pts = [];
+  facetPts.filter((_, i) => i % 9 === 0).forEach(([x, y]) => {
+    const p = v(x, y, surfZ(x, y));
+    pts.push(v(x, y, CAM_Z - 6), p, p, focus);
+  });
+  rays.add(lines(pts, new THREE.LineBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.6 })));
+}
+rays.visible = false;
+elGroup.add(rays);
+
+// ---- Azimuth structure: two tapered lattice towers with platforms ----
+const towers = tagged(new THREE.Group(), 'towers');
+{
+  const segs = [];
+  for (const s of [-1, 1]) {
+    segs.push(...lattice(s * (BEARING_X + 0.3), s * TOWER_OUT, TOWER_Z, 3.2, 1.2, PIVOT_H - 0.8, 6));
+    // outer buttress legs for the wide base seen in photos
+    segs.push([v(s * (TOWER_OUT + 1.2), 1.2, -TOWER_Z), v(s * TOWER_OUT, PIVOT_H * 0.55, -TOWER_Z + 1.6)],
+              [v(s * (TOWER_OUT + 1.2), 1.2, TOWER_Z), v(s * TOWER_OUT, PIVOT_H * 0.55, TOWER_Z - 1.6)]);
+  }
+  // lower girders joining the towers front and back, under the dish swing
+  for (const z of [-TOWER_Z, TOWER_Z]) {
+    const a = v(-BEARING_X - 0.3, 1.2, z), b = v(BEARING_X + 0.3, 1.2, z), a2 = v(-BEARING_X - 0.3, 2.6, z * 1.0), b2 = v(BEARING_X + 0.3, 2.6, z);
+    segs.push([a, b]);
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      const p = a.clone().lerp(b, i / n), q = a.clone().lerp(b, (i + 1) / n);
+      const pt = a2.clone().lerp(b2, i / n), qt = a2.clone().lerp(b2, (i + 1) / n);
+      segs.push([pt, qt], [p, pt], [p, qt]);
+    }
+  }
+  towers.add(tubes(segs, 0.13, M.white));
+  for (const s of [-1, 1]) {
+    const cx = s * (BEARING_X + TOWER_OUT + 1.0) / 2, w = TOWER_OUT - BEARING_X + 1.6;
+    towers.add(box(w, 0.25, 7.6, M.grey, cx, PIVOT_H - 0.7, 0));
+    towers.add(railing(cx - w / 2, cx + w / 2, -3.8, 3.8, PIVOT_H - 0.58));
+    towers.add(box(1.8, 1.6, 1.8, M.grey, s * (BEARING_X + 0.4), PIVOT_H, 0)); // bearing housing
+    // ladders/stairs inside the tower
+    const st = [];
+    for (let k = 0; k < 6; k++) {
+      const y0 = 1.2 + k * (PIVOT_H - 2) / 6, y1 = y0 + (PIVOT_H - 2) / 6, z = (k % 2 ? 1 : -1) * 2.2;
+      st.push([v(s * (TOWER_OUT - 0.8), y0, z), v(s * (TOWER_OUT - 0.8), y1, -z)]);
+    }
+    towers.add(tubes(st, 0.35, M.grey));
+  }
+}
+azGroup.add(towers);
+
+// ---- Bogies, base frame and drives (red, as on the real telescope) ----
+const base = tagged(new THREE.Group(), 'base');
+const RAIL_R = Math.hypot(TOWER_OUT, TOWER_Z);
+{
+  const corners = [];
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) corners.push(v(sx * (TOWER_OUT - 1), 0.75, sz * TOWER_Z));
+  const segs = [];
+  for (const c of corners) segs.push([c, v(0, 0.75, 0)]);
+  segs.push([corners[0], corners[1]], [corners[2], corners[3]], [corners[0], corners[2]], [corners[1], corners[3]]);
+  base.add(tubes(segs, 0.4, M.red));
+  // bogies sit on the rail, 2 per corner
+  for (let i = 0; i < 8; i++) {
+    const ang = Math.atan2(corners[i >> 1].z, corners[i >> 1].x) + (i % 2 ? 0.06 : -0.06);
+    const b = box(1.4, 1.0, 2.2, M.red, RAIL_R * Math.cos(ang), 0.55, RAIL_R * Math.sin(ang));
+    b.rotation.y = -ang;
+    base.add(b);
+  }
+  base.add(box(4.0, 1.1, 2.6, M.red, 0, 0.6, 0));          // elevation drive under the arc
+  base.add(box(2.2, 0.5, 2.2, M.red, 0, 1.3, 0));
+}
+azGroup.add(base);
+
+// ---- Fixed ground parts ----
+function grassTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#4b5634'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 9000; i++) {
+    const t = Math.random();
+    g.fillStyle = t < 0.5 ? `rgba(110,120,70,${Math.random() * 0.5})` : t < 0.8 ? `rgba(150,130,90,${Math.random() * 0.5})` : `rgba(40,50,30,${Math.random() * 0.6})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1 + Math.random() * 3);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(120, 120);
+  tex.encoding = THREE.sRGBEncoding;
+  return tex;
+}
+const ground = tagged(new THREE.Mesh(new THREE.CircleGeometry(800, 64),
+  new THREE.MeshStandardMaterial({ map: grassTexture(), roughness: 1 })), 'ground');
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+const pad = tagged(new THREE.Mesh(new THREE.CylinderGeometry(RAIL_R + 2.5, RAIL_R + 2.5, 0.1, 96),
+  new THREE.MeshStandardMaterial({ color: 0xa3a4a6, roughness: 0.9 })), 'base');
+pad.position.y = 0.05; pad.receiveShadow = true;
+scene.add(pad);
+const rail = tagged(new THREE.Mesh(new THREE.TorusGeometry(RAIL_R, 0.22, 8, 200), M.red), 'base');
+rail.rotation.x = Math.PI / 2; rail.position.y = 0.15;
+scene.add(rail);
+
+// ---- Camera access tower: lattice frame, stairs, cabin, railed roof ----
+const access = tagged(new THREE.Group(), 'access');
+{
+  const H = 10.5, x0 = -4.5, x1 = 4.5, z0 = -42, z1 = -33;
+  const segs = [];
+  const cols = [[x0, z0], [x1, z0], [x1, z1], [x0, z1], [0, z0], [0, z1]];
+  for (const [x, z] of cols) segs.push([v(x, 0, z), v(x, H, z)]);
+  for (const h of [3.5, 7, H]) {
+    segs.push([v(x0, h, z0), v(x1, h, z0)], [v(x0, h, z1), v(x1, h, z1)], [v(x0, h, z0), v(x0, h, z1)], [v(x1, h, z0), v(x1, h, z1)]);
+  }
+  // X-bracing on the faces
+  for (let k = 0; k < 3; k++) {
+    const a = k * 3.5, b = Math.min(H, a + 3.5);
+    segs.push([v(x0, a, z0), v(0, b, z0)], [v(0, a, z0), v(x0, b, z0)], [v(x0, a, z0), v(x0, b, z1)], [v(x0, a, z1), v(x0, b, z0)]);
+  }
+  access.add(tubes(segs, 0.12, M.grey));
+  access.add(box(9.4, 0.25, 9.4, M.grey, 0, H, (z0 + z1) / 2));
+  access.add(box(5, 2.8, 4.2, M.camera, -1.8, H + 1.55, z0 + 2.4));       // cabin
+  access.add(railing(x0 - 0.2, x1 + 0.2, z0 - 0.2, z1 + 0.2, H + 0.12));
+  access.add(box(4.2, 2.6, 3.5, M.camera, -2, 1.3, z0 + 2));               // ground-floor room
+  // zig-zag stair flights on the +x side
+  const flights = 4, fh = H / flights;
+  for (let i = 0; i < flights; i++) {
+    const za = i % 2 ? z1 - 0.8 : z0 + 0.8, zb = i % 2 ? z0 + 0.8 : z1 - 0.8;
+    const a = v(x1 + 1.0, i * fh, za), b = v(x1 + 1.0, (i + 1) * fh, zb);
+    const len = a.distanceTo(b);
+    const f = box(1.2, 0.15, len, M.grey, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    f.rotation.x = Math.atan2(-(b.y - a.y), b.z - a.z); // aligns the box's local +Z with the flight
+    access.add(f);
+    access.add(box(1.4, 0.15, 1.4, M.grey, x1 + 1.0, (i + 1) * fh, zb));
+  }
+}
+scene.add(access);
+
+// ---- Site containers ----
+for (const [x, z, r] of [[26, -18, 0.2], [30, -12, 0.2], [-28, 16, -0.4], [12, -46, 0], [-14, -46, 0]]) {
+  const c = box(12, 2.6, 2.5, M.camera, x, 1.3, z);
+  c.rotation.y = r;
+  scene.add(c);
+}
+
+// ---- Pointing ----
+const azIn = document.getElementById('az'), elIn = document.getElementById('el');
+let az = 0, el = 35, target = null;
+function applyPointing() {
+  azGroup.rotation.y = -THREE.MathUtils.degToRad(az);
+  elGroup.rotation.x = THREE.MathUtils.degToRad(el);
+  azIn.value = Math.round(((az % 360) + 360) % 360); elIn.value = Math.round(el);
+  document.getElementById('azv').textContent = azIn.value;
+  document.getElementById('elv').textContent = Math.round(el);
+}
+azIn.oninput = () => { target = null; az = +azIn.value; applyPointing(); };
+elIn.oninput = () => { target = null; el = +elIn.value; applyPointing(); };
+document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => {
+  const [e, a] = b.dataset.goto.split(',');
+  target = { el: +e, az: a === 'null' ? az : +a, rate: 15 };
+});
+// ~180 deg in 20 s
+document.getElementById('slew').onclick = () => { target = { az: az + 180, el: 30 + Math.random() * 50, rate: 9 }; };
+
+// ---- Toggles ----
+const bind = (id, obj) => document.getElementById(id).onchange = e => obj.visible = e.target.checked;
+bind('tMirrors', mirrors); bind('tFrame', frame); bind('tArch', arch); bind('tRays', rays);
+let eventsOn = true;
+document.getElementById('tEvents').onchange = e => eventsOn = e.target.checked;
+
+// ---- Views ----
+const GROUND_LIMIT = Math.PI * 0.495;
+function overview() {
+  controls.maxPolarAngle = GROUND_LIMIT;
+  cam.position.set(-52, 14, -62); controls.target.set(0, 15, -10);
+}
+overview();
+document.getElementById('overview').onclick = overview;
+document.getElementById('camView').onclick = () => {
+  elGroup.updateMatrixWorld(true);
+  const p = new THREE.Vector3(0, 0, CAM_Z + 0.02);
+  elGroup.localToWorld(p);
+  const n = new THREE.Vector3(0, 0, 1).transformDirection(elGroup.matrixWorld);
+  // The viewpoint sits on the optical axis, below the camera once the dish tilts up,
+  // so lift the ground clamp. Stop just short of the pole, where OrbitControls flips.
+  controls.maxPolarAngle = Math.PI - 1e-3;
+  controls.target.copy(p);
+  cam.position.copy(p).addScaledVector(n, 5);
+  if (Math.abs(n.y) > 0.9999) cam.position.x += 1e-3;
+};
+
+// ---- Picking ----
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+ray.params.Line.threshold = 0.1;
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => downAt = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(mouse, cam);
+  for (const hit of ray.intersectObjects(scene.children, true)) {
+    let o = hit.object, visible = true;
+    for (let p = o; p; p = p.parent) if (!p.visible) visible = false;
+    if (!visible) continue;
+    while (o && !o.userData.info) o = o.parent;
+    if (o) {
+      const [t, d] = INFO[o.userData.info];
+      document.getElementById('infoTitle').textContent = t;
+      document.getElementById('infoText').textContent = d;
+      return;
+    }
+  }
+});
+
+// ---- Simulated shower images on the camera ----
+// Light from a shower reaches the camera as a front sweeping along the image's major axis
+// (a few ns end to end in real data). Here it is slowed by ~1e8 so the sweep is visible.
+const SWEEP = 0.5;   // s for the front to cross the image
+const PULSE = 0.3;   // s decay of each pixel after the front passes
+const cDark = new THREE.Color(0x3c4a5c), cHot = new THREE.Color(0xffe066), cMid = new THREE.Color(0x3fa9ff), tmp = new THREE.Color();
+const level = new Float32Array(pixPts.length);
+let events = [];
+function newEvent(t) {
+  const r = Math.random() * 0.7, th = Math.random() * Math.PI * 2;
+  const cx = r * Math.cos(th), cy = r * Math.sin(th);
+  const phi = th + (Math.random() - 0.5) * 0.6; // images point roughly away from the centre
+  const a = 0.12 + Math.random() * 0.2, b = a * (0.2 + Math.random() * 0.15);
+  const hits = [];
+  pixPts.forEach(([x, y], i) => {
+    const dx = x - cx, dy = y - cy;
+    const u = dx * Math.cos(phi) + dy * Math.sin(phi), w = -dx * Math.sin(phi) + dy * Math.cos(phi);
+    const s = Math.exp(-0.5 * (u * u / (a * a) + w * w / (b * b)));
+    // arrival order along the axis, 0 at the end nearest the camera centre, 1 at the far end
+    if (s > 0.08) hits.push([i, s, Math.min(1, Math.max(0, (u + 2 * a) / (4 * a)))]);
+  });
+  events.push({ t0: t, hits });
+}
+function paintPixels(t) {
+  level.fill(0);
+  events = events.filter(e => t - e.t0 < SWEEP + 4 * PULSE);
+  for (const e of events)
+    for (const [i, s, f] of e.hits) {
+      const tau = t - e.t0 - f * SWEEP;
+      if (tau < 0) continue;
+      const p = tau < 0.04 ? tau / 0.04 : Math.exp(-(tau - 0.04) / PULSE);
+      level[i] = Math.max(level[i], s * p);
+    }
+  for (let i = 0; i < level.length; i++) {
+    const s = level[i] + 0.04 * Math.random();
+    tmp.copy(cDark).lerp(s < 0.5 ? cMid : cHot, Math.min(1, s * 1.6));
+    pixels.setColorAt(i, tmp);
+  }
+  pixels.instanceColor.needsUpdate = true;
+}
+
+// ---- Loop ----
+applyPointing();
+paintPixels(0);
+const clock = new THREE.Clock();
+let nextEvent = 0;
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+  if (target) {
+    const step = target.rate * dt;
+    const dAz = target.az - az, dEl = target.el - el;
+    az += Math.sign(dAz) * Math.min(Math.abs(dAz), step);
+    el += Math.sign(dEl) * Math.min(Math.abs(dEl), step * 0.5);
+    if (Math.abs(dAz) < 1e-3 && Math.abs(dEl) < 1e-3) { az = ((az % 360) + 360) % 360; target = null; }
+    applyPointing();
+  }
+  if (eventsOn && t > nextEvent) { newEvent(t); nextEvent = t + 0.6 + Math.random() * 1.2; }
+  paintPixels(t);
+  controls.update();
+  renderer.render(scene, cam);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize', () => {
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
