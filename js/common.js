@@ -94,30 +94,10 @@ function hexGrid(pitch, n, skipCentre = false) {
   return pts.sort((a, b) => a[2] - b[2]).slice(0, n);
 }
 
-// Pixels come in 265 modules of 7. Module centres sit on a √7-spaced super-lattice, and a
-// hexagon of 271 module positions minus its 6 corners gives 265 × 7 = 1855 pixels.
-function cameraLayout(pitch) {
-  const N = 9, A = [2, 1], B = [-1, 3];
-  const flower = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
-  const rot = -Math.atan2(Math.sqrt(3) / 2, 2.5); // turns the outline so its corners lie on ±x
-  const c = Math.cos(rot), s = Math.sin(rot), pts = [];
-  for (let m = -N; m <= N; m++)
-    for (let n = -N; n <= N; n++) {
-      const d = Math.max(Math.abs(m), Math.abs(n), Math.abs(m + n));
-      if (d > N || (d === N && (m === 0 || n === 0 || m + n === 0))) continue;
-      for (const [di, dj] of flower) {
-        const i = m * A[0] + n * B[0] + di, j = m * A[1] + n * B[1] + dj;
-        const x = pitch * (i + j / 2), y = pitch * j * Math.sqrt(3) / 2;
-        pts.push([x * c - y * s, x * s + y * c]);
-      }
-    }
-  return { pts, rot };
-}
-
-// Camera face at z = camZ, facing +Z (toward the dish): 1855 light-guide pixels behind a round window.
+// Camera face at z = camZ, facing +Z (toward the dish): 1855 light-guide pixels (positions from js/lstcam.js) behind a round window.
 const CAM_PIX_PITCH = 0.05;
 const cameraFace = (() => {
-  const { pts, rot } = cameraLayout(CAM_PIX_PITCH);
+  const pts = lstcamPoints(), rot = LSTCAM_ROT;
   const r = CAM_PIX_PITCH / Math.sqrt(3) * 0.94;
   const geo = new THREE.CylinderGeometry(r, r * 0.6, 0.04, 6); // tapered like a light guide
   geo.rotateX(Math.PI / 2);

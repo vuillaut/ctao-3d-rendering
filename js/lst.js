@@ -111,12 +111,14 @@ function buildLST(M) {
   const arch = tagged(new THREE.Group(), 'arch');
   const CAM_HALF = 1.5;
   {
-    const footZ = surfZ(11.7, 0) + 0.2;
-    const curve = new THREE.CatmullRomCurve3([
-      v(-11.7, 0, footZ), v(-10.6, 0, DISH_Z - 8), v(-7.6, 0, DISH_Z - 17), v(-3.6, 0, DISH_Z - 24.5),
-      v(-CAM_HALF - 0.1, 0, CAM_Z - 0.4), v(CAM_HALF + 0.1, 0, CAM_Z - 0.4),
-      v(3.6, 0, DISH_Z - 24.5), v(7.6, 0, DISH_Z - 17), v(10.6, 0, DISH_Z - 8), v(11.7, 0, footZ),
-    ], false, 'centripetal');
+    // The arch lies in the vertical plane of the optical axis (local y-z), springing from the top and
+    // bottom of the rim. Its profile is close to a parabola with the camera at the vertex.
+    const footZ = surfZ(0, 11.7) + 0.2, topZ = CAM_Z - 1.0, archPts = [];
+    for (let i = 0; i <= 40; i++) {
+      const s = -1 + 2 * i / 40, u = 1 - s * s;                 // u: 0 at the feet, 1 at the camera
+      archPts.push(v(0, 11.7 * s * (1 + 0.25 * u), footZ + (topZ - footZ) * u));
+    }
+    const curve = new THREE.CatmullRomCurve3(archPts);
     const archMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 240, 0.28, 12, false), M.white);
     archMesh.castShadow = true;
     arch.add(archMesh);
@@ -126,10 +128,10 @@ function buildLST(M) {
       const t = 0.06 + 0.37 * i / nRope;
       for (const leg of [t, 1 - t]) {
         const p = curve.getPointAt(leg), side = leg < 0.5 ? -1 : 1, spread = 25 + 130 * i / nRope;
-        for (const s of [1, -1]) pts.push(p, rim(side < 0 ? 180 - s * spread : s * spread));
+        for (const s of [1, -1]) pts.push(p, rim(side < 0 ? 270 + s * spread : 90 - s * spread));
       }
     }
-    for (const d of [80, 90, 100, 260, 270, 280]) pts.push(v(0, Math.sign(Math.sin(d * Math.PI / 180)) * CAM_HALF, CAM_Z - 0.2), rim(d));
+    for (const d of [-10, 0, 10, 170, 180, 190]) pts.push(v(Math.sign(Math.cos(d * Math.PI / 180)) * CAM_HALF, 0, CAM_Z - 0.2), rim(d));
     arch.add(lines(pts, M.rope));
   }
   el.add(arch);

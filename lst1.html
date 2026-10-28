@@ -84,6 +84,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/lstcam.js"></script>
 <script>
 // ---- Published dimensions (see LST-1_summary.md) ----
 const F = 28;               // focal length, m
@@ -105,7 +106,7 @@ const CAM_Z = DISH_Z - F;
 const INFO = {
   mirrors: ['Mirror facets (198)', 'Hexagonal facets about 1.5 m flat-to-flat on a 23 m paraboloid with 28 m focal length. A parabola keeps all light paths to the focus the same length, so the nanosecond Cherenkov flash stays short. The centre position is left open. Each facet has motorised actuators driven by the Active Mirror Control, which re-aligns the facets about every 10 s as the dish bends.'],
   frame: ['Dish space frame', 'A tetrahedral frame of tubes joined with MERO nodes. The 2013 design specified carbon-fibre tubes of 80–100 mm diameter instead of steel to keep the moving mass low (design target 60–65 t), which allows fast slewing.'],
-  arch: ['Camera support arch', 'A single arched tube springs from both sides of the dish and carries the camera at the focal point, 28 m away. It is built light to limit weight and the shadow it casts on the mirror. A fan of tension ropes (28 on LST-1) ties it to the dish rim and keeps it stiff.'],
+  arch: ['Camera support arch', 'A single arched tube springs from the top and bottom of the dish rim and carries the camera at the focal point, 28 m away. It is built light to limit weight and the shadow it casts on the mirror. A fan of tension ropes (28 on LST-1) ties it to the dish rim and keeps it stiff.'],
   camera: ['Camera', '1855 photomultiplier pixels in 265 modules of 7, with light guides and GHz-sampling readout. Field of view 4.5°, light-sensitive area about 2.2 m across, mass under 2 t. It moves on rails so it can be shifted along the axis and unloaded for maintenance.'],
   calibox: ['CaliBox', 'Calibration light source at the centre of the dish. It flashes the camera 28 m away to calibrate pixel gains and timing.'],
   elev: ['Elevation drive arc', 'A large circular arc fixed under the dish and centred on the elevation axle. Drives at the base push along it to tilt the dish from park (95° zenith angle) up to the zenith.'],
@@ -365,13 +366,14 @@ elGroup.add(calibox);
 const arch = tagged(new THREE.Group(), 'arch');
 const CAM_HALF = 1.5;
 {
-  const footZ = surfZ(11.7, 0) + 0.2;
-  const curve = new THREE.CatmullRomCurve3([
-    v(-11.7, 0, footZ), v(-10.6, 0, DISH_Z - 8), v(-7.6, 0, DISH_Z - 17), v(-3.6, 0, DISH_Z - 24.5),
-    v(-CAM_HALF - 0.1, 0, CAM_Z - 0.4),
-    v(CAM_HALF + 0.1, 0, CAM_Z - 0.4),
-    v(3.6, 0, DISH_Z - 24.5), v(7.6, 0, DISH_Z - 17), v(10.6, 0, DISH_Z - 8), v(11.7, 0, footZ),
-  ], false, 'centripetal');
+  // The arch lies in the vertical plane of the optical axis (local y-z), springing from the top and
+  // bottom of the rim. Its profile is close to a parabola with the camera at the vertex.
+  const footZ = surfZ(0, 11.7) + 0.2, topZ = CAM_Z - 1.0, archPts = [];
+  for (let i = 0; i <= 40; i++) {
+    const s = -1 + 2 * i / 40, u = 1 - s * s;                 // u: 0 at the feet, 1 at the camera
+    archPts.push(v(0, 11.7 * s * (1 + 0.25 * u), footZ + (topZ - footZ) * u));
+  }
+  const curve = new THREE.CatmullRomCurve3(archPts);
   const archMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 240, 0.28, 12, false), M.white);
   archMesh.castShadow = true;
   arch.add(archMesh);
@@ -386,13 +388,13 @@ const CAM_HALF = 1.5;
       const p = curve.getPointAt(leg), side = leg < 0.5 ? -1 : 1;
       const spread = 25 + 130 * i / nRope;           // ropes higher on the arch land further round the rim
       for (const s of [1, -1]) {
-        const deg = side < 0 ? 180 - s * spread : s * spread;
+        const deg = side < 0 ? 270 + s * spread : 90 - s * spread;
         pts.push(p, rim(deg));
       }
     }
   }
   // camera to top and bottom of the rim
-  for (const d of [80, 90, 100, 260, 270, 280]) pts.push(v(0, Math.sign(Math.sin(d * Math.PI / 180)) * CAM_HALF, CAM_Z - 0.2), rim(d));
+  for (const d of [-10, 0, 10, 170, 180, 190]) pts.push(v(Math.sign(Math.cos(d * Math.PI / 180)) * CAM_HALF, 0, CAM_Z - 0.2), rim(d));
   arch.add(lines(pts, M.rope));
 }
 elGroup.add(arch);
@@ -410,26 +412,8 @@ const cameraGroup = tagged(new THREE.Group(), 'camera');
   cameraGroup.add(box(2.6, 2.6, 0.06, M.dark, 0, 0, CAM_Z - 0.02));
   cameraGroup.add(box(2.0, 2.0, 0.6, M.camera, 0, 0, CAM_Z - 1.7)); // rear electronics housing
 }
-// Pixels come in 265 modules of 7. Module centres sit on a √7-spaced super-lattice, and a
-// hexagon of 271 module positions minus its 6 corners gives 265 × 7 = 1855 pixels.
-function cameraLayout(pitch) {
-  const N = 9, A = [2, 1], B = [-1, 3];
-  const flower = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
-  const rot = -Math.atan2(Math.sqrt(3) / 2, 2.5); // turns the outline so its corners lie on ±x
-  const c = Math.cos(rot), s = Math.sin(rot), pts = [];
-  for (let m = -N; m <= N; m++)
-    for (let n = -N; n <= N; n++) {
-      const d = Math.max(Math.abs(m), Math.abs(n), Math.abs(m + n));
-      if (d > N || (d === N && (m === 0 || n === 0 || m + n === 0))) continue;
-      for (const [di, dj] of flower) {
-        const i = m * A[0] + n * B[0] + di, j = m * A[1] + n * B[1] + dj;
-        const x = pitch * (i + j / 2), y = pitch * j * Math.sqrt(3) / 2;
-        pts.push([x * c - y * s, x * s + y * c]);
-      }
-    }
-  return { pts, rot };
-}
-const { pts: pixPts, rot: pixRot } = cameraLayout(PIX_PITCH);
+// Pixel positions from the prod6 LSTCam description (js/lstcam.js).
+const pixPts = lstcamPoints(), pixRot = LSTCAM_ROT;
 console.assert(pixPts.length === N_PIX, 'camera pixel count');
 const pixR = PIX_PITCH / Math.sqrt(3) * 0.94;
 const pixGeo = new THREE.CylinderGeometry(pixR, pixR * 0.6, 0.04, 6); // tapered like a light guide

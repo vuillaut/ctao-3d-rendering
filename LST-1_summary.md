@@ -35,7 +35,7 @@ An imaging atmospheric Cherenkov telescope. A gamma ray hitting the upper atmosp
 2. **Mirror facets.** Each is about 1.5 m flat-to-flat. Each facet has motorised actuators (two per facet [R]) that tilt it.
 3. **Active Mirror Control (AMC).** A system that re-aligns the facets online, about once every 10 s [S], to correct for deformation of the dish as it tilts and with temperature.
 4. **Dish structure.** A tetrahedral space frame of tubes joined with the MERO node system. Carbon-fibre (CFRP) tubes of 80 or 100 mm diameter were chosen in the design instead of steel to save weight [S, 2013 design paper]. The design is basically a copy of the MAGIC azimuth substructure. I found no source confirming that the as-built LST-1 frame uses the CFRP tubes as designed.
-5. **Camera support: arch, masts and ropes.** An arch rises over the dish and carries a square camera frame at the focal point, 28 m from the dish [S]. The design minimises mast weight and shadowing of the mirror. The structure includes 28 tension ropes [S].
+5. **Camera support: arch, masts and ropes.** An arch rises over the dish and carries a square camera frame at the focal point, 28 m from the dish [S]. The arch lies in the vertical plane through the optical axis: it springs from the top and bottom of the dish rim, and its profile is close to a parabola with the camera at the vertex (from photos and renders of LST-1). The design minimises mast weight and shadowing of the mirror. The structure includes 28 tension ropes [S].
 6. **Camera.** 1855 high-quantum-efficiency PMT pixels in 265 seven-pixel modules, each with a light guide. It hangs on the camera frame on a rail system that lets it be moved relative to the mirror and unloaded for maintenance [S].
 7. **CaliBox.** A calibration light source at the centre of the dish that flashes the camera, 28 m away [S].
 8. **Access tower.** A structure placed in front of the telescope for camera maintenance [S].
@@ -47,7 +47,7 @@ An imaging atmospheric Cherenkov telescope. A gamma ray hitting the upper atmosp
 - Facet positions use a hexagonal grid trimmed to 198 facets nearest the centre. The real layout may differ in detail.
 - The dish frame, towers, arch and ropes are schematic. They show the right kind of structure and scale, not the real tube-by-tube geometry.
 - The azimuth rail radius, tower geometry and axle position are estimates.
-- The camera pixel grid is a hexagonal grid trimmed to 1855 pixels; module boundaries are not drawn.
+- Camera pixel positions come from the prod6 LSTCam description (`lstcam.csv`, 1855 pixels, 0.05 m pitch), stored in `js/lstcam.js`. Module boundaries are not drawn. The MST camera uses the same layout.
 
 ## Sources
 

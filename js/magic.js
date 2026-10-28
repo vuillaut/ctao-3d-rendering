@@ -68,10 +68,14 @@ function buildMAGIC(M) {
   // ---- Arch, cables, camera ----
   const arch = tagged(new THREE.Group(), 'arch');
   {
-    const curve = new THREE.CatmullRomCurve3([
-      v(-8.4, 0, surfZ(8.4, 0)), v(-6.8, 0, DISH_Z - 7), v(-3.2, 0, DISH_Z - 14), v(-0.9, 0, CAM_Z - 0.3),
-      v(0.9, 0, CAM_Z - 0.3), v(3.2, 0, DISH_Z - 14), v(6.8, 0, DISH_Z - 7), v(8.4, 0, surfZ(8.4, 0)),
-    ], false, 'centripetal');
+    // In the vertical plane of the optical axis (local y-z), from the top and bottom of the rim,
+    // with a near-parabolic profile and the camera at the vertex.
+    const footZ = surfZ(0, 8.4), topZ = CAM_Z - 0.7, archPts = [];
+    for (let i = 0; i <= 40; i++) {
+      const s = -1 + 2 * i / 40, u = 1 - s * s;
+      archPts.push(v(0, 8.4 * s * (1 + 0.25 * u), footZ + (topZ - footZ) * u));
+    }
+    const curve = new THREE.CatmullRomCurve3(archPts);
     arch.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 160, 0.16, 10, false), M.grey));
     const pts = [];
     for (let i = 1; i <= 6; i++) {
@@ -79,7 +83,7 @@ function buildMAGIC(M) {
       for (const leg of [t, 1 - t]) {
         const p = curve.getPointAt(leg);
         for (const s of [1, -1]) {
-          const a = (leg < 0.5 ? 180 : 0) + s * (40 + 15 * i) * (leg < 0.5 ? -1 : 1);
+          const a = (leg < 0.5 ? 270 : 90) + s * (40 + 15 * i);
           const x = R * Math.cos(a * Math.PI / 180), y = R * Math.sin(a * Math.PI / 180);
           pts.push(p, v(x, y, surfZ(x, y)));
         }

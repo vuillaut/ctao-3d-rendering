@@ -12,7 +12,8 @@ On both array pages all telescopes point together. Showers are simulated, projec
 
 ## Code layout
 
-- `js/common.js`: geometry helpers, materials, sky, the hexagonal 1855-pixel camera face and pixel colours.
+- `js/common.js`: geometry helpers, materials, sky, the 1855-pixel camera face and pixel colours.
+- `js/lstcam.js`: LSTCam pixel positions from the prod6 camera description, used for the LST and MST cameras.
 - `js/lst.js`, `js/mst.js`, `js/sst.js`, `js/magic.js`: one builder per telescope type.
 - `js/array.js`: the array scene (terrain, roads, pointing, showers, event display, picking), configured per site by `ctao-north.html` and `ctao-south.html`.
 - `css/array.css`: shared styles for the array pages.
