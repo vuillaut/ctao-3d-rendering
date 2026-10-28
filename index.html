@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTAO 3D Models</title>
+<style>
+  :root {
+    --bg: #0d1a3a;
+    --card: rgba(255, 255, 255, 0.05);
+    --text: #e4e9f2;
+    --muted: #93a0b8;
+    --accent: #5cc8ff;
+    --border: rgba(255, 255, 255, 0.14);
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  a.card { display: block; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+    color: inherit; text-decoration: none; }
+  a.card:hover { border-color: var(--accent); }
+  a.card h2 { font-size: 18px; margin: 0 0 6px; color: var(--accent); }
+  a.card p { margin: 0; color: var(--muted); font-size: 14px; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>CTAO telescopes in 3D</h1>
+  <p class="lead">Browser models of the Cherenkov Telescope Array Observatory's northern site at La Palma, built with three.js.</p>
+  <div class="grid">
+    <a class="card" href="ctao-north.html">
+      <h2>CTAO-North array</h2>
+      <p>Alpha configuration: 4 LSTs and 9 MSTs at their prod6 positions, with MAGIC, the terrain and simulated air showers seen by every camera.</p>
+    </a>
+    <a class="card" href="lst1.html">
+      <h2>LST-1</h2>
+      <p>The 23 m Large-Sized Telescope: 198 facets, camera arch, elevation drive and access tower.</p>
+    </a>
+    <a class="card" href="mst.html">
+      <h2>MST</h2>
+      <p>The 12 m Medium-Sized Telescope: Davies-Cotton dish, quadrupod, counterweight and tower.</p>
+    </a>
+  </div>
+  <footer>
+    Published dimensions are mixed with estimates from photos. See the
+    <a href="https://github.com/vuillaut/ctao-3d-rendering">repository</a> for what is sourced and what is approximate.
+  </footer>
+</main>
+</body>
+</html>
