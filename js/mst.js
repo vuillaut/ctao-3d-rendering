@@ -173,7 +173,7 @@ function buildMST(M) {
   root.add(shelter);
 
   return {
-    kind: 'MST', info: MST_INFO, root, az, el, pixels, F, camZ: CAM_Z, dishZ: DISH_Z, pivotH: PIVOT_H,
+    kind: 'MST', info: MST_INFO, root, az, el, pixels, pixPts: cameraFace.pts, camR: 1.2, pixPitch: CAM_PIX_PITCH, F, camZ: CAM_Z, dishZ: DISH_Z, pivotH: PIVOT_H,
     labelHeight: 30, slewRate: 4, // illustrative; MSTs slew more slowly than LSTs
     parts: { mirrors, frame, quad },
     pads: [[0, 0, 5], [-4.3, 3, 4.5]],

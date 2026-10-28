@@ -238,7 +238,7 @@ function buildLST(M) {
   root.add(access);
 
   return {
-    kind: 'LST', info: LST_INFO, root, az, el, pixels, F, camZ: CAM_Z, dishZ: DISH_Z, pivotH: PIVOT_H,
+    kind: 'LST', info: LST_INFO, root, az, el, pixels, pixPts: cameraFace.pts, camR: 1.2, pixPitch: CAM_PIX_PITCH, F, camZ: CAM_Z, dishZ: DISH_Z, pivotH: PIVOT_H,
     labelHeight: 46, slewRate: 9, // deg/s in azimuth: 180° in about 20 s
     parts: { mirrors, frame, arch },
     // ground footprints to flatten in the terrain: [x, z, radius] in root coordinates

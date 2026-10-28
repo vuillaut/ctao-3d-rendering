@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CTAO-South Array</title>
+  <meta name="description"
+    content="The CTAO-South Alpha configuration in the Atacama Desert, Chile: 14 MSTs and 37 SSTs, with simulated air showers seen by every camera.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="CTAO-South array in 3D">
+  <meta property="og:description"
+    content="The CTAO-South Alpha configuration in the Atacama Desert, Chile: 14 MSTs and 37 SSTs, with simulated air showers seen by every camera.">
+  <meta property="og:url" content="https://vuillaut.github.io/ctao-3d-rendering/ctao-south.html">
+  <meta property="og:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-ctao-south.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CTAO-South array in 3D">
+  <meta name="twitter:description"
+    content="The CTAO-South Alpha configuration in the Atacama Desert, Chile: 14 MSTs and 37 SSTs, with simulated air showers seen by every camera.">
+  <meta name="twitter:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-ctao-south.png">
+  <link rel="stylesheet" href="css/array.css">
+</head>
+
+<body>
+  <div id="view"></div>
+  <div id="labels"></div>
+
+  <div id="controls" class="panel">
+    <h1>CTAO-South · Alpha configuration</h1>
+    <div class="sub">14 MSTs + 37 SSTs near Paranal, Chile</div>
+    <label>Azimuth: <span id="azv">0</span>°
+      <input id="az" type="range" min="0" max="360" step="1" value="0"></label>
+    <label>Elevation: <span id="elv">60</span>°
+      <input id="el" type="range" min="0" max="90" step="1" value="60"></label>
+    <div class="row">
+      <button id="park">Park</button>
+      <button id="zenith">Zenith</button>
+      <button id="grb">GRB alert</button>
+    </div>
+    <div class="optional">
+      <label class="check"><input type="checkbox" id="tShowers" checked> Air showers</label>
+      <label class="check"><input type="checkbox" id="tLabels" checked> Labels</label>
+      <label class="check"><input type="checkbox" id="tLater"> 4 LSTs planned for a later phase</label>
+      <label class="check"><input type="checkbox" id="tLandmarks" checked> VLT and ELT (approximate)</label>
+    </div>
+    <label>Fly to <select id="flyto">
+        <option value="">Overview</option>
+      </select></label>
+    <div id="status"></div>
+  </div>
+
+  <div id="events" class="panel">
+    <h2>Event display</h2>
+    <canvas id="evcanvas" width="680" height="500"></canvas>
+    <div id="evcap">Showers start once all telescopes are on target. SSTs mostly see the rarer, brighter showers.</div>
+  </div>
+
+  <div id="info" class="panel">
+    <h2 id="infoTitle">Click a telescope</h2>
+    <div class="meta" id="infoMeta"></div>
+    <p id="infoText">Drag to orbit, scroll to zoom, right-drag to pan. MST positions follow the simulated array
+      layout; SST positions are read from a layout figure (about ±5 m). Terrain, roads and landmarks are
+      illustrative.</p>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/lst.js"></script>
+  <script src="js/mst.js"></script>
+  <script src="js/sst.js"></script>
+  <script src="js/magic.js"></script>
+  <script src="js/array.js"></script>
+  <script>
+    // Layout: MSTs and LSTs from the prod5 Paranal simulation (Easting = -y, Northing = x, z above 2147 m),
+    // matched to the prod6 layout figure; SSTs read off that figure (z = null: placed on the terrain).
+    // Terrain samples: ground heights at all distinct prod5 positions. See CTAO_South_summary.md.
+    // LST foundations are built now; the 4 LSTs come in a later phase (prod5 LST positions 1-4)
+    const LATER = { context: true, contextNote: 'planned for a later phase' };
+
+    // Landmarks, positions from approximate coordinates; heights above 2147 m
+    const PARANAL = [-8900, 5900, 488], ARMAZONES = [12500, 10100, 900];
+    function vltBuild(M) {
+      const g = new THREE.Group(), white = new THREE.MeshStandardMaterial({ color: 0xe9ecef, metalness: 0.5, roughness: 0.35 });
+      [[-60, 20], [-20, 5], [20, -10], [60, -25]].forEach(([x, z]) => {     // the four 8 m Unit Telescopes
+        const enc = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 18, 24), white);
+        enc.position.set(x, 9, z);
+        const top = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), white);
+        top.position.set(x, 18, z);
+        g.add(enc, top);
+      });
+      const plat = new THREE.Mesh(new THREE.CylinderGeometry(120, 140, 6, 32), M.concrete);
+      plat.position.y = 2;
+      g.add(plat);
+      return g;
+    }
+    function eltBuild(M) {
+      const g = new THREE.Group(), white = new THREE.MeshStandardMaterial({ color: 0xe9ecef, metalness: 0.5, roughness: 0.35 });
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(44, 44, 40, 40), white);
+      drum.position.y = 20;
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(44, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), white);
+      dome.position.y = 40;
+      const plat = new THREE.Mesh(new THREE.CylinderGeometry(110, 130, 6, 32), M.concrete);
+      plat.position.y = 2;
+      g.add(drum, dome, plat);
+      return g;
+    }
+    const bump = (E, N, [pE, pN, h], sigma) => h * Math.exp(-((E - pE) ** 2 + (N - pN) ** 2) / (2 * sigma * sigma));
+
+    const app = initArray({
+      refAlt: 2147,
+      layout: [
+        { name: 'MSTS-01', kind: 'MST', id: 5, E: 0.0, N: -0.02, z: 24.35 },
+        { name: 'MSTS-02', kind: 'MST', id: 8, E: -151.22, N: 1.43, z: 25.0 },
+        { name: 'MSTS-03', kind: 'MST', id: 6, E: 151.22, N: -1.47, z: 31.0 },
+        { name: 'MSTS-04', kind: 'MST', id: 11, E: -74.2, N: 147.43, z: 21.0 },
+        { name: 'MSTS-05', kind: 'MST', id: 12, E: 77.02, N: 145.98, z: 26.0 },
+        { name: 'MSTS-06', kind: 'MST', id: 10, E: -237.05, N: 156.49, z: 24.0 },
+        { name: 'MSTS-07', kind: 'MST', id: 13, E: 240.01, N: 151.91, z: 30.0 },
+        { name: 'MSTS-08', kind: 'MST', id: 20, E: 2.96, N: 308.42, z: 19.5 },
+        { name: 'MSTS-09', kind: 'MST', id: 16, E: 74.2, N: -147.46, z: 28.0 },
+        { name: 'MSTS-10', kind: 'MST', id: 15, E: -77.02, N: -146.01, z: 28.0 },
+        { name: 'MSTS-11', kind: 'MST', id: 17, E: 237.05, N: -156.53, z: 38.5 },
+        { name: 'MSTS-12', kind: 'MST', id: 14, E: -240.01, N: -151.95, z: 27.0 },
+        { name: 'MSTS-13', kind: 'MST', id: 26, E: 159.6, N: -316.72, z: 35.0 },
+        { name: 'MSTS-14', kind: 'MST', id: 24, E: -165.65, N: -313.6, z: 30.5 },
+        { name: 'SSTS-01', kind: 'SST', E: 0.0, N: 200.0, z: null },
+        { name: 'SSTS-02', kind: 'SST', E: -5.0, N: -230.0, z: null },
+        { name: 'SSTS-03', kind: 'SST', E: 322.0, N: -253.0, z: null },
+        { name: 'SSTS-04', kind: 'SST', E: -327.0, N: -247.0, z: null },
+        { name: 'SSTS-05', kind: 'SST', E: 575.0, N: -255.0, z: null },
+        { name: 'SSTS-06', kind: 'SST', E: -580.0, N: -243.0, z: null },
+        { name: 'SSTS-07', kind: 'SST', E: 797.0, N: -228.0, z: null },
+        { name: 'SSTS-08', kind: 'SST', E: -800.0, N: -213.0, z: null },
+        { name: 'SSTS-09', kind: 'SST', E: 497.0, N: -5.0, z: null },
+        { name: 'SSTS-10', kind: 'SST', E: -500.0, N: 5.0, z: null },
+        { name: 'SSTS-11', kind: 'SST', E: 750.0, N: -8.0, z: null },
+        { name: 'SSTS-12', kind: 'SST', E: -750.0, N: 8.0, z: null },
+        { name: 'SSTS-13', kind: 'SST', E: 325.0, N: 247.0, z: null },
+        { name: 'SSTS-14', kind: 'SST', E: -322.0, N: 253.0, z: null },
+        { name: 'SSTS-15', kind: 'SST', E: 577.0, N: 245.0, z: null },
+        { name: 'SSTS-16', kind: 'SST', E: -575.0, N: 255.0, z: null },
+        { name: 'SSTS-17', kind: 'SST', E: 797.0, N: 213.0, z: null },
+        { name: 'SSTS-18', kind: 'SST', E: -797.0, N: 228.0, z: null },
+        { name: 'SSTS-19', kind: 'SST', E: 123.0, N: -502.0, z: null },
+        { name: 'SSTS-20', kind: 'SST', E: -135.0, N: -498.0, z: null },
+        { name: 'SSTS-21', kind: 'SST', E: 493.0, N: -505.0, z: null },
+        { name: 'SSTS-22', kind: 'SST', E: -503.0, N: -495.0, z: null },
+        { name: 'SSTS-23', kind: 'SST', E: 800.0, N: -473.0, z: null },
+        { name: 'SSTS-24', kind: 'SST', E: -810.0, N: -460.0, z: null },
+        { name: 'SSTS-25', kind: 'SST', E: 133.0, N: 500.0, z: null },
+        { name: 'SSTS-26', kind: 'SST', E: -125.0, N: 502.0, z: null },
+        { name: 'SSTS-27', kind: 'SST', E: 502.0, N: 495.0, z: null },
+        { name: 'SSTS-28', kind: 'SST', E: -495.0, N: 505.0, z: null },
+        { name: 'SSTS-29', kind: 'SST', E: 808.0, N: 458.0, z: null },
+        { name: 'SSTS-30', kind: 'SST', E: -800.0, N: 472.0, z: null },
+        { name: 'SSTS-31', kind: 'SST', E: -5.0, N: -790.0, z: null },
+        { name: 'SSTS-32', kind: 'SST', E: -375.0, N: -745.0, z: null },
+        { name: 'SSTS-36', kind: 'SST', E: 5.0, N: 790.0, z: null },
+        { name: 'SSTS-37', kind: 'SST', E: 372.0, N: 745.0, z: null },
+        { name: 'SSTS-38', kind: 'SST', E: -360.0, N: 752.0, z: null },
+        { name: 'SSTS-39', kind: 'SST', E: 655.0, N: 810.0, z: null },
+        { name: 'SSTS-40', kind: 'SST', E: -640.0, N: 822.0, z: null },
+        Object.assign({ name: 'LSTS-01', kind: 'LST', id: 1, E: 64.82, N: -20.64, z: 34.3 }, LATER),
+        Object.assign({ name: 'LSTS-02', kind: 'LST', id: 2, E: 0.77, N: 79.99, z: 29.4 }, LATER),
+        Object.assign({ name: 'LSTS-03', kind: 'LST', id: 3, E: -65.2, N: -19.4, z: 31.0 }, LATER),
+        Object.assign({ name: 'LSTS-04', kind: 'LST', id: 4, E: -1.15, N: -120.03, z: 33.1 }, LATER),
+      ],
+      terrainSamples: [[64.8, -20.6, 19.8], [0.8, 80.0, 14.9], [-65.2, -19.4, 16.5], [-1.1, -120.0, 18.6], [0.0, -0.0, 13.9], [151.2, -1.5, 20.6], [325.2, -3.1, 28.6], [-151.2, 1.4, 14.6], [-325.2, 3.1, 13.1], [-237.1, 156.5, 13.6], [-74.2, 147.4, 10.6], [77.0, 146.0, 15.6], [240.0, 151.9, 19.6], [-240.0, -151.9, 16.6], [-77.0, -146.0, 17.6], [74.2, -147.5, 17.6], [237.1, -156.5, 28.1], [-447.5, 295.3, 14.6], [-159.6, 317.1, 8.1], [3.0, 308.4, 9.1], [165.7, 314.0, 12.1], [453.1, 286.7, 28.1], [-453.1, -286.8, 6.6], [-165.7, -313.6, 20.1], [-3.0, -308.5, 19.1], [159.6, -316.7, 24.6], [447.5, -295.5, 41.6], [5.6, 582.3, 3.1], [-5.6, -582.3, 25.6], [-156.9, 207.0, 10.7], [160.9, 204.0, 16.1], [-160.9, -204.0, 18.6], [156.9, -207.1, 24.6], [-423.3, 168.9, 14.7], [426.4, 160.7, 29.6], [-426.4, -160.8, 6.7], [423.3, -168.9, 38.6], [-519.9, 5.0, 8.2], [519.9, -5.0, 37.6], [-400.0, 395.5, 7.7], [407.5, 387.8, 24.6], [-407.5, -387.8, 9.7], [400.0, -395.6, 46.6], [-105.3, 495.6, 5.7], [114.8, 493.5, 8.2], [-114.8, -493.5, 24.6], [105.3, -495.6, 26.6], [-723.6, 6.9, 8.2], [723.6, -7.0, 56.1], [-312.7, 621.2, 3.6], [324.1, 615.1, 15.7], [-324.6, -615.1, 16.1], [312.7, -621.3, 45.6], [-669.1, 441.8, 26.6], [677.5, 428.9, 43.6], [-677.5, -428.9, 3.6], [669.1, -441.8, 66.7], [7.9, 820.1, 0.7], [-7.9, -820.1, 27.1], [-794.9, 228.5, 21.6], [799.1, 213.2, 52.6], [-799.1, -213.2, 6.7], [794.9, -228.5, 64.7], [-944.4, 9.1, 23.6], [944.4, -9.1, 71.7], [-562.9, 668.0, 9.7], [575.6, 657.1, 39.6], [-575.6, -657.1, 4.7], [562.9, -668.1, 62.6], [-219.2, 885.7, 2.6], [236.2, 881.3, 5.7], [-236.2, -881.4, 20.6], [219.2, -885.7, 38.6], [-463.5, 920.5, 9.2], [481.1, 911.5, 22.6], [-481.1, -911.5, 7.7], [463.5, -920.6, 55.6], [-966.8, 480.4, 52.6], [975.9, 461.7, 62.1], [-975.9, -461.8, 13.2], [966.8, -480.4, 83.7], [-843.1, 714.7, 45.6], [856.7, 698.4, 50.1], [-856.7, -698.5, 11.2], [843.1, -714.8, 81.2], [10.6, 1100.1, 0.1], [-10.6, -1100.2, 24.1], [-1107.5, 249.9, 51.6], [1112.2, 228.6, 74.2], [-1112.1, -227.4, 21.6], [1107.6, -249.9, 85.7], [-730.7, 964.0, 23.6], [749.1, 949.8, 42.6], [-749.1, -949.8, 13.7], [730.7, -964.0, 79.7], [-357.6, 1199.7, 6.7], [380.5, 1192.6, 15.7], [-380.5, -1192.6, 9.2], [357.6, -1199.7, 43.6], [213.1, -156.5, 28.1], [-77.0, -121.0, 17.6], [-59.3, -138.0, 17.6], [20.0, 1100.1, 0.1], [7.9, 880.1, 0.7], [42.9, 785.0, 0.7], [779.5, -228.5, 64.7], [-471.0, 910.0, 9.2], [-810.0, 228.5, 21.6], [-350.0, -0.0, 17.4], [350.0, 0.0, 35.4], [-320.0, -270.0, 18.4], [320.0, -270.0, 36.4], [-320.0, 270.0, 16.4], [320.0, 270.0, 26.4], [-575.0, -280.0, 6.4], [575.0, -280.0, 46.4], [-575.0, 280.0, 16.4], [575.0, 280.0, 36.4], [-175.0, -685.0, 21.4], [175.0, -685.0, 31.4], [-175.0, 685.0, 6.4], [175.0, 685.0, 14.4], [-250.0, -1070.0, 16.4], [250.0, -1070.0, 38.6], [-250.0, 1070.0, 1.4], [250.0, 1070.0, 8.2], [0.0, -970.0, 26.4], [0.0, 970.0, 1.4], [590.0, 120.0, 41.4], [590.0, -120.0, 45.4], [-590.0, 120.0, 9.4], [-590.0, -120.0, 7.4], [-465.0, -500.0, 6.4], [465.0, -500.0, 48.4], [-465.0, 500.0, 11.4], [465.0, 500.0, 26.4], [-360.0, -770.0, 16.4], [360.0, -770.0, 49.4], [-360.0, 770.0, 6.4], [360.0, 770.0, 13.4], [-920.0, -260.0, 21.4], [920.0, -260.0, 71.4], [-920.0, 260.0, 41.4], [920.0, 260.0, 61.4], [-815.0, -500.0, 11.4], [815.0, -500.0, 71.4], [-815.0, 500.0, 41.4], [815.0, 500.0, 49.4], [-655.0, -810.0, 8.4], [655.0, -810.0, 64.4], [-655.0, 810.0, 16.4], [655.0, 810.0, 37.4]],
+      center: [0, 0],
+      residualFade: [1000, 1600],
+      innerSize: 2400, innerSeg: 480,
+      regional(E, N, r) {
+        // illustrative: Cerro Paranal (VLT) to the north-west, Cerro Armazones (ELT) to the north-east,
+        // and the hills of the coastal range around the site
+        return bump(E, N, PARANAL, 1500) + bump(E, N, ARMAZONES, 2600) + 140 * Math.max(0, fbm(E / 4000 + 3.1, N / 4000 - 1.7, 4)) * smoothstep(1800, 5000, r);
+      },
+      noise: [0.8, 60, 5, 350, 70, 2500],
+      palette: { rock: 0xa5805c, scrub: 0x9a7a58, dark: 0x6b5340 },
+      groundTint: '#e6d6c2',
+      roadColor: 0xc2ad92,
+      vegetation: { count: 3500, shrubFraction: 0, shrubColors: [0x000000], rockColors: [0x7a5c45, 0x8c6b50, 0x5e4636, 0x9a7b5e] },
+      clouds: null,
+      accessRoad: [-1150, 1050],
+      landmarks: [
+        { name: 'VLT, Cerro Paranal', E: PARANAL[0], N: PARANAL[1], build: vltBuild, labelHeight: 80 },
+        { name: 'ELT, Cerro Armazones', E: ARMAZONES[0], N: ARMAZONES[1], build: eltBuild, labelHeight: 120 },
+      ],
+      overview: { pos: [820, 300, 900], target: [-40, 20, 40] },
+      maxDistance: 25000, fog: [6000, 50000], shadowExtent: 950,
+      impactRadius: 900, energy: [0.5, 300], startPointing: [0, 60],
+      terrainText: 'Illustrative terrain: interpolated through ground heights at all simulated telescope positions on the site (it rises gently eastwards). The surrounding hills and the two landmark mountains are illustrative.',
+    });
+    const later = app.telescopes.filter(t => t.context);
+    later.forEach(t => { t.root.visible = false; });
+    document.getElementById('tLater').onchange = e => later.forEach(t => { t.root.visible = e.target.checked; });
+    document.getElementById('tLandmarks').onchange = e => app.scene.children
+      .filter(o => o.userData.landmark).forEach(o => { o.visible = e.target.checked; });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SST 3D Model</title>
+<meta name="description" content="Interactive 3D model of CTAO's Small-Sized Telescope: a 4.3 m dual-mirror telescope with a 2048-pixel SiPM camera.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="CTAO SST in 3D">
+<meta property="og:description" content="Interactive 3D model of CTAO's Small-Sized Telescope: a 4.3 m dual-mirror telescope with a 2048-pixel SiPM camera.">
+<meta property="og:url" content="https://vuillaut.github.io/ctao-3d-rendering/sst.html">
+<meta property="og:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-sst.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CTAO SST in 3D">
+<meta name="twitter:description" content="Interactive 3D model of CTAO's Small-Sized Telescope: a 4.3 m dual-mirror telescope with a 2048-pixel SiPM camera.">
+<meta name="twitter:image" content="https://vuillaut.github.io/ctao-3d-rendering/img/preview-sst.png">
+<style>
+  :root {
+    --bg: #0d1a3a;
+    --panel: rgba(12, 20, 40, 0.86);
+    --text: #e4e9f2;
+    --muted: #93a0b8;
+    --accent: #5cc8ff;
+    --border: rgba(255, 255, 255, 0.14);
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+  #controls { top: 16px; left: 16px; width: 260px; max-width: calc(100vw - 64px); }
+  #info { bottom: 16px; left: 16px; width: 360px; max-width: calc(100vw - 64px); }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  label { display: block; margin: 6px 0; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  button { background: transparent; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit; font-size: 13px; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  #info h2 { font-size: 14px; margin: 0 0 4px; color: var(--accent); }
+  #info p { margin: 0; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  @media (max-width: 600px) {
+    #controls { top: 8px; left: 8px; right: 8px; width: auto; max-width: none; }
+    #info { left: 8px; right: 8px; bottom: 8px; width: auto; max-width: none; }
+    .optional { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="view"></div>
+
+<div id="controls" class="panel">
+  <h1>CTAO SST</h1>
+  <div class="sub">4.3 m dual-mirror · 2048 SiPM pixels · 10.5° FoV</div>
+  <label>Azimuth: <span id="azv">0</span>°
+    <input id="az" type="range" min="0" max="360" step="1" value="0"></label>
+  <label>Elevation: <span id="elv">35</span>°
+    <input id="el" type="range" min="-1" max="90" step="1" value="35"></label>
+  <div class="row">
+    <button data-goto="0,0">Horizon</button>
+    <button data-goto="90,null">Zenith</button>
+    <button id="slew">Slew 180°</button>
+  </div>
+  <div class="optional">
+    <label class="check"><input type="checkbox" id="tMirrors" checked> Primary mirror M1</label>
+    <label class="check"><input type="checkbox" id="tMast" checked> Mast and M2 housing</label>
+    <label class="check"><input type="checkbox" id="tRays"> Light path M1 → M2 → camera</label>
+    <label class="check"><input type="checkbox" id="tEvents" checked> Simulated shower images</label>
+  </div>
+  <div class="row"><button id="camView">Look at camera</button><button id="overview">Overview</button></div>
+</div>
+
+<div id="info" class="panel">
+  <h2 id="infoTitle">Click a part</h2>
+  <p id="infoText">Drag to orbit, scroll to zoom, right-drag to pan. Click any part of the telescope to see what it does.</p>
+  <div class="hint">Mirror sizes, spacings, focal length and camera layout follow published values. Mirror shapes are spheres standing in for the real aspheric surfaces; the mount is estimated from images.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/common.js"></script>
+<script src="js/sst.js"></script>
+<script>
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8fa8d6, 80, 420);
+const cam = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.02, 2000);
+const controls = new THREE.OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+const M = makeMaterials();
+addTwilightSky(scene, renderer, { shadowExtent: 14 });
+
+// ---- Telescope ----
+const sst = buildSST(M);
+scene.add(sst.root);
+
+// ---- Ground ----
+function groundTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#6b5f45'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 9000; i++) {
+    const t = Math.random();
+    g.fillStyle = t < 0.5 ? `rgba(150,130,90,${Math.random() * 0.5})` : t < 0.8 ? `rgba(110,115,70,${Math.random() * 0.5})` : `rgba(50,45,35,${Math.random() * 0.6})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 3, 1 + Math.random() * 3);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(200, 200); tex.encoding = THREE.sRGBEncoding;
+  return tex;
+}
+const ground = tagged(new THREE.Mesh(new THREE.CircleGeometry(800, 64), new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 1 })), 'ground');
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.25; ground.receiveShadow = true;
+scene.add(ground);
+const INFO = Object.assign({ ground: ['Site', 'All SSTs go to CTAO-South at Paranal, Chile: 37 in the Alpha Configuration.'] }, sst.info);
+
+// ---- Light path (schematic) ----
+const rays = new THREE.Group();
+{
+  const pts = [];
+  for (const [x, y] of sst.optics.panelPts) {
+    for (const f of [0.55, 0.85]) {
+      const r = sstTraceRay(x * f * 1.1, y * f * 1.1);
+      if (!r) continue;
+      const [P1, P2, P3] = r;
+      pts.push(v(P1.x, P1.y, SST_OPTICS.M2_Z - 1.5), P1, P1, P2, P2, P3);
+    }
+  }
+  rays.add(lines(pts, new THREE.LineBasicMaterial({ color: 0x5cc8ff, transparent: true, opacity: 0.7 })));
+}
+rays.visible = false;
+sst.el.add(rays);
+
+// ---- Pointing ----
+const azIn = document.getElementById('az'), elIn = document.getElementById('el');
+let az = 0, el = 35, target = null;
+function applyPointing() {
+  sst.az.rotation.y = -THREE.MathUtils.degToRad(az);
+  sst.el.rotation.x = THREE.MathUtils.degToRad(el);
+  azIn.value = Math.round(((az % 360) + 360) % 360); elIn.value = Math.round(el);
+  document.getElementById('azv').textContent = azIn.value;
+  document.getElementById('elv').textContent = Math.round(el);
+}
+azIn.oninput = () => { target = null; az = +azIn.value; applyPointing(); };
+elIn.oninput = () => { target = null; el = +elIn.value; applyPointing(); };
+document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => {
+  const [e, a] = b.dataset.goto.split(',');
+  target = { el: +e, az: a === 'null' ? az : +a, rate: 10 };
+});
+document.getElementById('slew').onclick = () => { target = { az: az + 180, el: 30 + Math.random() * 50, rate: sst.slewRate }; };
+
+// ---- Toggles ----
+const bind = (id, objs) => document.getElementById(id).onchange = e => objs.forEach(o => o.visible = e.target.checked);
+bind('tMirrors', [sst.parts.mirrors]); bind('tMast', [sst.parts.mast, sst.parts.m2]); bind('tRays', [rays]);
+let eventsOn = true;
+document.getElementById('tEvents').onchange = e => eventsOn = e.target.checked;
+
+// ---- Views ----
+const GROUND_LIMIT = Math.PI * 0.495;
+function overview() {
+  controls.maxPolarAngle = GROUND_LIMIT;
+  cam.position.set(-9, 4.5, -10); controls.target.set(0, 4.2, -1);
+}
+overview();
+document.getElementById('overview').onclick = overview;
+// The camera looks up at M2, so the view sits in the 0.52 m gap between them, looking back down.
+document.getElementById('camView').onclick = () => {
+  sst.el.updateMatrixWorld(true);
+  const p = sst.el.localToWorld(v(0, 0, SST_OPTICS.CAM_Z));
+  const n = v(0, 0, -1).transformDirection(sst.el.matrixWorld);
+  controls.maxPolarAngle = Math.PI - 1e-3;
+  controls.target.copy(p);
+  cam.position.copy(p).addScaledVector(n, 0.45);
+  if (Math.abs(n.y) > 0.9999) cam.position.x += 1e-3;
+};
+
+// ---- Picking ----
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+ray.params.Line.threshold = 0.05;
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => downAt = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(mouse, cam);
+  for (const hit of ray.intersectObjects(scene.children, true)) {
+    let o = hit.object, visible = true;
+    for (let p = o; p; p = p.parent) if (!p.visible) visible = false;
+    if (!visible) continue;
+    while (o && !o.userData.info) o = o.parent;
+    if (o && INFO[o.userData.info]) {
+      const [t, d] = INFO[o.userData.info];
+      document.getElementById('infoTitle').textContent = t;
+      document.getElementById('infoText').textContent = d;
+      return;
+    }
+  }
+});
+
+// ---- Simulated shower images: light front sweeping along the image axis ----
+const PIX = sstCameraLayout.pts, SWEEP = 0.5, PULSE = 0.3;
+const level = new Float32Array(PIX.length), tmp = new THREE.Color();
+let events = [];
+function newEvent(t) {
+  const r = Math.random() * 0.11, th = Math.random() * Math.PI * 2;
+  const cx = r * Math.cos(th), cy = r * Math.sin(th);
+  const phi = th + (Math.random() - 0.5) * 0.6; // images point roughly away from the centre
+  const a = 0.02 + Math.random() * 0.035, b = a * (0.25 + Math.random() * 0.15);
+  const hits = [];
+  PIX.forEach(([x, y], i) => {
+    const dx = x - cx, dy = y - cy;
+    const u = dx * Math.cos(phi) + dy * Math.sin(phi), w = -dx * Math.sin(phi) + dy * Math.cos(phi);
+    const s = Math.exp(-0.5 * (u * u / (a * a) + w * w / (b * b)));
+    if (s > 0.08) hits.push([i, s, Math.min(1, Math.max(0, (u + 2 * a) / (4 * a)))]);
+  });
+  events.push({ t0: t, hits });
+}
+function paintPixels(t) {
+  level.fill(0);
+  events = events.filter(e => t - e.t0 < SWEEP + 4 * PULSE);
+  for (const e of events)
+    for (const [i, s, f] of e.hits) {
+      const tau = t - e.t0 - f * SWEEP;
+      if (tau < 0) continue;
+      level[i] = Math.max(level[i], s * (tau < 0.04 ? tau / 0.04 : Math.exp(-(tau - 0.04) / PULSE)));
+    }
+  for (let i = 0; i < level.length; i++) sst.pixels.setColorAt(i, pixelColor(level[i] + 0.04 * Math.random(), tmp));
+  sst.pixels.instanceColor.needsUpdate = true;
+}
+
+// ---- Loop ----
+applyPointing();
+paintPixels(0);
+const clock = new THREE.Clock();
+let nextEvent = 0;
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+  if (target) {
+    const step = target.rate * dt, dAz = target.az - az, dEl = target.el - el;
+    az += Math.sign(dAz) * Math.min(Math.abs(dAz), step);
+    el += Math.sign(dEl) * Math.min(Math.abs(dEl), step * 0.5);
+    if (Math.abs(dAz) < 1e-3 && Math.abs(dEl) < 1e-3) { az = ((az % 360) + 360) % 360; target = null; }
+    applyPointing();
+  }
+  if (eventsOn && t > nextEvent) { newEvent(t); nextEvent = t + 0.6 + Math.random() * 1.2; }
+  paintPixels(t);
+  controls.update();
+  renderer.render(scene, cam);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize', () => {
+  cam.aspect = innerWidth / innerHeight;
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

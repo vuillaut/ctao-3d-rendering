@@ -180,7 +180,11 @@ function addTwilightSky(scene, renderer, { domeRadius = 900, shadowExtent = 60 }
 }
 
 // Pixel colours: idle light guides, then blue → yellow with signal
-const PIX_IDLE = new THREE.Color(0x3c4a5c), PIX_MID = new THREE.Color(0x3fa9ff), PIX_HOT = new THREE.Color(0xffe066);
+// hex values are sRGB; convert so they render as written with sRGB output
+const PIX_IDLE = new THREE.Color(0x3c4a5c).convertSRGBToLinear(), PIX_MID = new THREE.Color(0x3fa9ff).convertSRGBToLinear(), PIX_HOT = new THREE.Color(0xffe066).convertSRGBToLinear();
 function pixelColor(s, out) {
   return out.copy(PIX_IDLE).lerp(s < 0.5 ? PIX_MID : PIX_HOT, Math.min(1, s * 1.6));
 }
+// CSS colour for 2D canvases, which expect sRGB
+const _pixCss = new THREE.Color();
+const pixelStyle = (s) => pixelColor(s, _pixCss).convertLinearToSRGB().getStyle();
