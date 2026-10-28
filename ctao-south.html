@@ -39,6 +39,11 @@
       <button id="zenith">Zenith</button>
       <button id="grb">GRB alert</button>
     </div>
+    <label>Shower energies <select id="spectrum">
+        <option value="flat">Spread evenly (showcase)</option>
+        <option value="crab">Realistic: Crab-like spectrum, E⁻²·⁵</option>
+      </select></label>
+    <div class="row"><button id="fireLow">Fire a 50 GeV shower</button><button id="fireHigh">Fire a 30 TeV shower</button></div>
     <div class="optional">
       <label class="check"><input type="checkbox" id="tShowers" checked> Air showers</label>
       <label class="check"><input type="checkbox" id="tLabels" checked> Labels</label>
@@ -190,7 +195,7 @@
       ],
       overview: { pos: [820, 300, 900], target: [-40, 20, 40] },
       maxDistance: 25000, fog: [6000, 50000], shadowExtent: 950,
-      impactRadius: 900, energy: [0.5, 300], startPointing: [0, 60],
+      impactRadius: 900, energy: [0.05, 300], startPointing: [0, 60],
       terrainText: 'Illustrative terrain: interpolated through ground heights at all simulated telescope positions on the site (it rises gently eastwards). The surrounding hills and the two landmark mountains are illustrative.',
     });
     const later = app.telescopes.filter(t => t.context);

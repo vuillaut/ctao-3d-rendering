@@ -14,11 +14,10 @@
 //   vegetation: { count, colors } | null, clouds: { y } | null,
 //   accessRoad: [E, N] | null, landmarks: [{ name, E, N, build(world, M) -> Object3D }],
 //   overview: { pos: [x, y, z], target: [x, y, z] }, maxDistance, fog: [near, far], shadowExtent,
-//   impactRadius, energy: [Emin, Emax], startPointing: [az, el], terrainText,
+//   impactRadius (m), energy: [Emin, Emax] (TeV), startPointing: [az, el], terrainText,
 // }
 
 const AXIS_H = { LST: 14.5, MST: 10.4, SST: 3.6, MAGIC: 9.5 };
-const AMP = { LST: 1, MST: 0.3, SST: 0.035 }; // light collected ~ mirror area, relative to an LST
 const world = (E, N, y = 0) => new THREE.Vector3(E, y, -N); // x = East, z = South
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -297,53 +296,109 @@ function initArray(SITE) {
   }
 
   // ---- Air showers ----
-  // Toy model: axis parallel to the pointing, Gaussian longitudinal profile, lateral light density
-  // flat inside the ~120 m light pool and falling outside, E^-2 energy spectrum. Each emission
-  // point is projected into every camera and its photon arrival time computed. Real times are ns;
-  // display times are seconds.
-  const C_LIGHT = 0.2998;   // m/ns
-  const DESCENT = 0.9;      // s of shower-development animation before the light reaches the array
-  const INTRA = 0.12;       // display s per ns inside one image
-  for (const t of array) { t.level = new Float32Array(t.pixPts.length); t.hits = null; t.dirty = true; }
+  // Physics-based toy model, numbers and sources in SHOWER_MODEL.md:
+  // - energy from a power law (spread evenly in log E, or Crab-like E^-2.5)
+  // - shower maximum X_max = X0 ln(E/Ec), longitudinal profile from the Greisen formula, in an
+  //   exponential atmosphere; the axis is parallel to the pointing
+  // - photon density on the ground rho(R, E) ~ 90 ph/m² per TeV inside the ~120 m pool, with an
+  //   energy-dependent ring and fall-off; photoelectrons = rho × mirror area × 10 % efficiency
+  // - each emission point is projected into every camera with a lateral spread of ~10 m;
+  //   arrival times include path length and the refractive delay of the air
+  // Real times are ns; display times are seconds.
+  const C_LIGHT = 0.2998;     // m/ns
+  const DESCENT = 0.9;        // s of shower-development animation before the light reaches the array
+  const INTRA = 0.12;         // display s per ns inside one image
+  const X0 = 36.7, EC = 83e-6, X_SEA = 1030, H_ATM = 7600; // g/cm², TeV, g/cm², m (fits US Std 5-13 km)
+  const H_OBS = SITE.refAlt, X_OBS = X_SEA * Math.exp(-H_OBS / H_ATM);
+  const N1_OBS = 2.92e-4 * Math.exp(-H_OBS / 8400); // refractivity n - 1 at the site
+  const EFF = 0.1, LAT_SPREAD = 10;                  // photon → p.e. efficiency; m
+  const MIRROR = { LST: 369, MST: 88, SST: 6 };      // effective mirror area, m²
+  const TRIG_SIZE = 50, TRIG_PE = 5, TRIG_PIX = 3;   // image size and pixels needed to trigger
+  for (const t of array) { t.level = new Float32Array(t.pixPts.length); t.hits = null; t.dirty = true; t.lastSize = 0; }
+
+  // Photon density (ph/m², 300-550 nm) at distance R (m) from the axis for energy E (TeV)
+  function rhoCherenkov(R, E) {
+    const Rc = 120, A = E <= 1 ? 0.3 : 0.3 / (1 + Math.log10(E)), R0 = 45 * Math.pow(E / 0.1, 0.15);
+    let f = R <= Rc ? 1 + A * Math.exp(-(((R - Rc) / 25) ** 2)) : (1 + A) * Math.exp(-(R - Rc) / R0);
+    if (E > 1) f *= 1 + 0.5 * Math.log10(E) * Math.exp(-R / 30); // deep showers fill in the core
+    return 90 * E * f;
+  }
+  const greisen = (t, y) => { const s = 3 * t / (t + 2 * y); return 0.31 / Math.sqrt(y) * Math.exp(t * (1 - 1.5 * Math.log(s))); };
+  const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+  const fmtE = (E) => E < 1 ? `${Number((E * 1000).toPrecision(2))} GeV` : `${E < 10 ? E.toFixed(1) : E.toFixed(0)} TeV`;
+  function sampleEnergy() {
+    const [Emin, Emax] = SITE.energy, u = Math.random();
+    if (!$('spectrum') || $('spectrum').value !== 'crab') return Emin * Math.pow(Emax / Emin, u); // even in log E
+    const a = 1 - 2.5;                                                                          // dN/dE ∝ E^-2.5
+    return Math.pow(Math.pow(Emin, a) + u * (Math.pow(Emax, a) - Math.pow(Emin, a)), 1 / a);
+  }
 
   const axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v(0, 0, 0), v(0, 1, 0)]),
     new THREE.LineBasicMaterial({ color: 0x9fe6ff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
   const frontGlow = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 12),
     new THREE.MeshBasicMaterial({ color: 0xcff4ff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
-  const POOL_R = 170;
-  const pool = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 256;
-    const g = c.getContext('2d'), grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(120,220,255,0.55)'); grad.addColorStop(0.62, 'rgba(120,220,255,0.7)');
-    grad.addColorStop(0.72, 'rgba(160,235,255,0.95)'); grad.addColorStop(1, 'rgba(120,220,255,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
-    // square grid draped on the terrain each event; the radial texture makes it a disc
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2 * POOL_R, 2 * POOL_R, 80, 80),
-      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    mesh.geometry.rotateX(-Math.PI / 2);
-    mesh.userData.base = Float32Array.from(mesh.geometry.attributes.position.array);
-    return mesh;
-  })();
+  // light pool: a grid draped on the terrain, textured with the radial photon density of each shower
+  const poolCanvas = document.createElement('canvas'); poolCanvas.width = poolCanvas.height = 256;
+  const poolTex = new THREE.CanvasTexture(poolCanvas);
+  const pool = new THREE.Mesh(new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  pool.frustumCulled = false;
   scene.add(axisLine, frontGlow, pool);
+  function drawPool(I, E) {
+    // radius where the density drops to 3 % of its value at the ring
+    const ref = rhoCherenkov(120, E);
+    let Rv = 150;
+    while (Rv < 1500 && rhoCherenkov(Rv, E) > 0.03 * ref) Rv += 10;
+    let peak = 0;
+    for (let R = 0; R <= Rv; R += 5) peak = Math.max(peak, rhoCherenkov(R, E));
+    const g = poolCanvas.getContext('2d'), img = g.createImageData(256, 256);
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+      const r = Math.hypot(x - 127.5, y - 127.5) / 128;
+      const a = r >= 1 ? 0 : Math.sqrt(rhoCherenkov(r * Rv, E) / peak) * (1 - smoothstep(0.85, 1, r));
+      img.data.set([140, 225, 255, 255 * a], (y * 256 + x) * 4);
+    }
+    g.putImageData(img, 0, 0);
+    poolTex.needsUpdate = true;
+    const geo = new THREE.PlaneGeometry(2 * Rv, 2 * Rv, 80, 80);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) + I.x, z = pos.getZ(i) + I.z;
+      pos.setXYZ(i, x, terrainH(x, -z) + 0.8, z);
+    }
+    pool.geometry.dispose();
+    pool.geometry = geo;
+    return Rv;
+  }
 
   let shower = null, eventCount = 0;
   const pointingDir = (azDeg, elDeg) => {
     const a = THREE.MathUtils.degToRad(azDeg), e = THREE.MathUtils.degToRad(elDeg);
     return v(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
   };
-  function simulateShower() {
-    const s = pointingDir(tgtAz, tgtEl);
-    const rr = SITE.impactRadius * Math.sqrt(Math.random()), ra = Math.random() * Math.PI * 2;
+  function simulateShower(E) {
+    const s = pointingDir(tgtAz, tgtEl), sinEl = Math.max(0.15, s.y);
+    const Rimp = SITE.impactRadius + 150 * Math.max(0, Math.log10(E));   // brighter showers trigger from further out
+    const rr = Rimp * Math.sqrt(Math.random()), ra = Math.random() * Math.PI * 2;
     const IE = cE + rr * Math.cos(ra), IN = cN + rr * Math.sin(ra);
     const I = world(IE, IN, terrainH(IE, IN));
-    const [Emin, Emax] = SITE.energy;
-    const energy = Math.min(Emax, Emin / (1 - Math.random()));           // E^-2
-    const peak = 0.35 + Math.random() * 0.3;
-    const K = 28, samplesK = [];
+    // longitudinal profile along the axis, in radiation lengths of slant depth
+    const y = Math.log(E / EC), shift = gauss() * 0.95;                  // ~35 g/cm² shower-to-shower jitter
+    const tGround = X_OBS / sinEl / X0, K = 40, samples = [];
+    let wsum = 0;
     for (let k = 0; k < K; k++) {
-      const l = k / (K - 1), d = 15000 - 11000 * l;                       // slant distance above the impact point
-      samplesK.push({ P: I.clone().addScaledVector(s, d), d, w: Math.exp(-(((l - peak) / 0.2) ** 2)) });
+      const t = 0.3 + (tGround - 0.3) * (k + 0.5) / K, tt = t - shift;
+      if (tt <= 0.05) continue;
+      const hAsl = H_ATM * Math.log(X_SEA / (t * X0 * sinEl)), D = hAsl - H_OBS;
+      if (D < 30) continue;
+      const w = greisen(tt, y);
+      samples.push({ P: I.clone().addScaledVector(s, D / sinEl), d: D / sinEl, D, w });
+      wsum += w;
     }
+    for (const sm of samples) sm.w /= wsum;
+    const used = samples.filter(sm => sm.w > 2e-3);
+    const xMax = (y + shift) * X0, hMax = H_ATM * Math.log(X_SEA / (xMax * sinEl));
+
     const q = new THREE.Quaternion(), T = new THREE.Vector3(), u = new THREE.Vector3(), rel = new THREE.Vector3();
     const tels = [];
     for (const t of array) {
@@ -351,76 +406,78 @@ function initArray(SITE) {
       t.el.localToWorld(T.set(0, 0, t.dishZ));
       t.el.getWorldQuaternion(q).invert();
       rel.subVectors(T, I);
-      const R = rel.clone().addScaledVector(s, -rel.dot(s)).length();   // distance from the shower axis
-      const density = R < 120 ? 1 + 0.5 * (R / 120) ** 4 : 1.5 * Math.exp(-(R - 120) / 80);
-      const amp = energy * density * AMP[t.kind];
-      if (amp <= 0.15) { tels.push({ t, triggered: false, hits: [], tmin: 0 }); continue; }
-      const sigMin = t.pixPitch * 0.9;
+      const R = rel.clone().addScaledVector(s, -rel.dot(s)).length();  // distance from the shower axis
+      const size = rhoCherenkov(R, E) * MIRROR[t.kind] * EFF;         // photoelectrons collected by the mirror
+      if (size < TRIG_SIZE) { tels.push({ t, R, size: 0, triggered: false, hits: [] }); continue; }
+      const psf = t.pixPitch * 0.5, pixA = t.kind === 'SST' ? t.pixPitch ** 2 : t.pixPitch ** 2 * Math.sqrt(3) / 2;
       const img = [];
-      for (const sm of samplesK) {
+      for (const sm of used) {
         u.subVectors(sm.P, T);
         const dist = u.length();
         u.divideScalar(dist).applyQuaternion(q);
         if (u.z >= -0.5) continue;
-        img.push({ x: t.F * u.x / u.z, y: t.F * u.y / u.z, w: sm.w, sig: Math.max(sigMin, t.F * 30 / dist), tns: (dist - sm.d) / C_LIGHT });
-      }
-      const n = t.pixPts.length, vals = new Float32Array(n), times = new Float32Array(n);
-      let maxV = 0;
-      for (let i = 0; i < n; i++) {
-        const [x, y] = t.pixPts[i];
-        let sum = 0, st = 0;
-        for (const p of img) {
-          const g = p.w * Math.exp(-((x - p.x) ** 2 + (y - p.y) ** 2) / (2 * p.sig * p.sig));
-          sum += g; st += g * p.tns;
-        }
-        vals[i] = sum; times[i] = sum > 0 ? st / sum : 0;
-        if (sum > maxV) maxV = sum;
+        const sig = Math.hypot(t.F * LAT_SPREAD / dist, psf);
+        // light from higher up crosses more air: path difference plus refractive delay (ns)
+        const delay = N1_OBS * 8400 * (1 - Math.exp(-sm.D / 8400)) / sinEl;
+        img.push({ x: t.F * u.x / u.z, y: t.F * u.y / u.z, w: sm.w * pixA / (2 * Math.PI * sig * sig), sig, s2: 2 * sig * sig, cut: 4 * sig, tns: (dist - sm.d + delay) / C_LIGHT });
       }
       const hits = [];
-      if (maxV > 0) {
-        const peakV = Math.min(1.4, 0.35 + amp * 0.5);
-        for (let i = 0; i < n; i++) { const val = peakV * vals[i] / maxV; if (val > 0.06) hits.push([i, val, times[i]]); }
+      let inCam = 0;
+      for (let i = 0; i < t.pixPts.length; i++) {
+        const [x, yy] = t.pixPts[i];
+        let sum = 0, st = 0;
+        for (const p of img) {
+          const dx = x - p.x, dy = yy - p.y;
+          if (dx > p.cut || dx < -p.cut || dy > p.cut || dy < -p.cut) continue;
+          const g = p.w * Math.exp(-(dx * dx + dy * dy) / p.s2);
+          sum += g; st += g * p.tns;
+        }
+        const pe = size * sum;
+        inCam += pe;
+        if (pe >= 1) hits.push([i, pe, st / sum]);
       }
-      const triggered = hits.filter(h => h[1] > 0.3).length >= 4;
-      tels.push({ t, triggered, hits: triggered ? hits : [], tmin: triggered ? Math.min(...hits.map(h => h[2])) : 0 });
+      const triggered = inCam >= TRIG_SIZE && hits.filter(h => h[1] >= TRIG_PE).length >= TRIG_PIX;
+      tels.push({ t, R, size: inCam, triggered, hits: triggered ? hits : [], tmin: triggered ? Math.min(...hits.map(h => h[2])) : 0 });
     }
-    return { tels, I, s, IE, IN, trig: tels.filter(x => x.triggered) };
+    return { tels, I, s, IE, IN, E, hMax, trig: tels.filter(x => x.triggered) };
   }
-  function showShower(now) {
-    // most showers land far from the telescopes; draw a few until at least two telescopes see one
-    let r = simulateShower();
-    for (let k = 0; k < 8 && r.trig.length < 2; k++) r = simulateShower();
-    const { tels, I, s, IE, IN, trig } = r;
+  function showShower(now, forcedE) {
+    // most showers land where few telescopes see them; redraw the impact until at least two do
+    const E = forcedE || sampleEnergy();
+    let r = simulateShower(E);
+    for (let k = 0; k < 12 && r.trig.length < 2; k++) r = simulateShower(E);
+    const { tels, I, s, IE, IN, hMax, trig } = r;
     const t0 = trig.length ? Math.min(...trig.map(x => x.tmin)) : 0;
     const span = trig.length ? Math.max(...trig.map(x => x.tmin)) - t0 : 0;
     const G = Math.min(0.004, 1.0 / Math.max(span, 1)); // display s per ns between telescopes
     for (const x of tels) {
-      x.t.hits = x.triggered ? { start: now + DESCENT + (x.tmin - t0) * G, list: x.hits.map(([i, val, tns]) => [i, val, Math.min(1.0, (tns - x.tmin) * INTRA)]) } : null;
+      x.t.lastSize = x.triggered ? x.size : 0;
+      // pixel brightness on a log scale: ~5 p.e. faint blue, ~300 p.e. saturated yellow
+      x.t.hits = x.triggered ? { start: now + DESCENT + (x.tmin - t0) * G, list: x.hits.map(([i, pe, tns]) => [i, Math.log10(1 + pe) / 2.5, Math.min(1.0, (tns - x.tmin) * INTRA)]) } : null;
       x.t.label.classList.toggle('hit', x.triggered);
       x.t.dirty = true;
     }
     axisLine.geometry.setFromPoints([I, I.clone().addScaledVector(s, 15000)]);
-    const base = pool.userData.base, pos = pool.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = base[3 * i] + I.x, z = base[3 * i + 2] + I.z;
-      pos.setXYZ(i, x, terrainH(x, -z) + 0.8, z);
-    }
-    pos.needsUpdate = true;
-    pool.geometry.computeBoundingSphere();
+    const Rv = drawPool(I, E);
+    const bright = Math.min(1, 0.3 + 0.17 * Math.log10(E / 0.01));        // brighter showers, brighter pool
+    frontGlow.scale.setScalar(0.5 + 0.35 * Math.log10(E / 0.01));
     eventCount++;
-    shower = { start: now, I, s };
+    shower = { start: now, I, s, bright };
+    const best = trig.reduce((a, b) => (b.size > (a ? a.size : 0) ? b : a), null);
     const byKind = ['LST', 'MST', 'SST'].map(k => [k, trig.filter(x => x.t.kind === k).length, array.filter(t => t.kind === k).length]).filter(([, , n]) => n);
-    $('evcap').innerHTML = `Event ${eventCount}: impact E ${IE.toFixed(0)} m, N ${IN.toFixed(0)} m · ` +
-      `<b>${trig.length}/${array.length}</b> triggered (` + byKind.map(([k, c, n]) => `${c}/${n} ${k}`).join(', ') + ')';
+    $('evcap').innerHTML = `Event ${eventCount}: <b>${fmtE(E)}</b> · shower max ≈ ${(hMax / 1000).toFixed(1)} km a.s.l. · light pool ≈ ${Math.round(Rv / 10) * 10} m<br>` +
+      `impact E ${IE.toFixed(0)} m, N ${IN.toFixed(0)} m · <b>${trig.length}/${array.length}</b> triggered (` +
+      byKind.map(([k, c, n]) => `${c}/${n} ${k}`).join(', ') + ')' +
+      (best ? ` · brightest image ${Math.round(best.size).toLocaleString('en')} p.e. (${best.t.name})` : '');
   }
   function updateShowerVisuals(now) {
     if (!shower) return;
     const age = now - shower.start;
     frontGlow.position.copy(shower.I).addScaledVector(shower.s, 15000 * (1 - Math.min(1, age / DESCENT)));
-    frontGlow.material.opacity = age < DESCENT ? 0.9 : 0;
-    axisLine.material.opacity = Math.max(0, 0.7 * Math.min(1, age * 3) * (1 - smoothstep(DESCENT + 0.6, DESCENT + 1.8, age)));
+    frontGlow.material.opacity = age < DESCENT ? 0.9 * shower.bright : 0;
+    axisLine.material.opacity = Math.max(0, 0.7 * shower.bright * Math.min(1, age * 3) * (1 - smoothstep(DESCENT + 0.6, DESCENT + 1.8, age)));
     const pa = age - DESCENT;
-    pool.material.opacity = pa < 0 ? 0 : Math.min(1, pa / 0.08) * Math.exp(-pa / 0.7);
+    pool.material.opacity = pa < 0 ? 0 : shower.bright * Math.min(1, pa / 0.08) * Math.exp(-pa / 0.7);
   }
   const tmp = new THREE.Color();
   function paintCameras(now) {
@@ -521,7 +578,7 @@ function initArray(SITE) {
       const [pt, pd] = (part && tel.info[part]) || [tel.kind, ''];
       $('infoTitle').textContent = `${tel.name} · ${pt}`;
       $('infoMeta').textContent = `E ${tel.E.toFixed(1)} m, N ${tel.N.toFixed(1)} m · ground ≈ ${(SITE.refAlt + tel.ground).toFixed(0)} m a.s.l.` +
-        (tel.context ? ` · ${tel.contextNote || 'not in the array'}` : '');
+        (tel.context ? ` · ${tel.contextNote || 'not in the array'}` : '') + (tel.lastSize ? ` · last image ${Math.round(tel.lastSize).toLocaleString('en')} p.e.` : '');
       $('infoText').textContent = pd;
     } else {
       $('infoTitle').textContent = 'Terrain';
@@ -532,7 +589,9 @@ function initArray(SITE) {
 
   // ---- Loop ----
   const clock = new THREE.Clock(), status = $('status'), projV = new THREE.Vector3();
-  let nextShower = 1.0, evFrame = 0;
+  let nextShower = 1.0, evFrame = 0, forcedE = null;
+  if ($('fireLow')) $('fireLow').onclick = () => { forcedE = 0.05; nextShower = 0; };
+  if ($('fireHigh')) $('fireHigh').onclick = () => { forcedE = 30; nextShower = 0; };
   const kinds = ['LST', 'MST', 'SST'].filter(k => array.some(t => t.kind === k));
   function tick() {
     const dt = Math.min(clock.getDelta(), 0.1), now = clock.elapsedTime;
@@ -545,7 +604,8 @@ function initArray(SITE) {
         return `${k}s ${l.filter(t => azErr(t) < 0.3 && Math.abs(tgtEl - t.curEl) < 0.3).length}/${l.length}`;
       }).join(', ') + ' on target';
     if ($('tShowers').checked && tracking && now > nextShower) {
-      showShower(now);
+      showShower(now, forcedE);
+      forcedE = null;
       nextShower = now + 3.2 + Math.random() * 1.5;
     }
     updateShowerVisuals(now);

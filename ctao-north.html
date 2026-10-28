@@ -39,6 +39,11 @@
       <button id="zenith">Zenith</button>
       <button id="grb">GRB alert</button>
     </div>
+    <label>Shower energies <select id="spectrum">
+        <option value="flat">Spread evenly (showcase)</option>
+        <option value="crab">Realistic: Crab-like spectrum, E⁻²·⁵</option>
+      </select></label>
+    <div class="row"><button id="fireLow">Fire a 50 GeV shower</button><button id="fireHigh">Fire a 30 TeV shower</button></div>
     <div class="optional">
       <label class="check"><input type="checkbox" id="tShowers" checked> Air showers</label>
       <label class="check"><input type="checkbox" id="tLabels" checked> Labels</label>
@@ -112,7 +117,7 @@
       accessRoad: [760, 60],
       overview: { pos: [330, 140, 400], target: [20, 25, 0] },
       maxDistance: 6000, fog: [2500, 26000], shadowExtent: 480,
-      impactRadius: 330, energy: [0.5, 40], startPointing: [180, 60],
+      impactRadius: 350, energy: [0.015, 100], startPointing: [180, 60],
       terrainText: 'Illustrative terrain: interpolated through the telescope ground heights, with a slope down towards the sea to the north-west and the caldera rim to the south-east.',
     });
     document.getElementById('tMagic').onchange = e => app.telescopes.filter(t => t.kind === 'MAGIC').forEach(t => { t.root.visible = e.target.checked; });

@@ -27,4 +27,6 @@ Each model mixes published values with estimates from photos. The summaries list
 - `CTAO_North_summary.md`: telescope positions, the mapping from prod6 IDs to LSTN/MSTN names, and how ground heights were derived.
 - `CTAO_South_summary.md`: MST positions from the prod5 Paranal simulation, SST positions read off the prod6 layout figure (about ±5 m), and the terrain derivation.
 
-The terrain, roads, vegetation, landmarks and the air-shower model are illustrative.
+- `SHOWER_MODEL.md`: the air-shower physics used on the array pages (shower maximum, light pool, photoelectrons, trigger, timing), with sources.
+
+The terrain, roads, vegetation and landmarks are illustrative. The shower model follows published scaling laws but is a simplified, closed-form model, not a full simulation.
