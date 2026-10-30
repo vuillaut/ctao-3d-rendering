@@ -117,12 +117,13 @@ function addCameraFace(group, camZ, M) {
 }
 
 // Twilight sky: gradient dome, stars, environment map, lights. Returns the key light.
-function addTwilightSky(scene, renderer, { domeRadius = 900, shadowExtent = 60 } = {}) {
+function addTwilightSky(scene, renderer, { domeRadius = 900, shadowExtent = 60, night = false } = {}) {
+  const SKY = night ? { top: 0x02040c, mid: 0x060c1e, horizon: 0x101a30, hemi: 0.12, key: 0.22 } : { top: 0x0f2a6b, mid: 0x4a74c4, horizon: 0xb9c9e6, hemi: 0.55, key: 1.3 };
   const dome = new THREE.Mesh(new THREE.SphereGeometry(domeRadius, 48, 24), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(0x0f2a6b) }, mid: { value: new THREE.Color(0x4a74c4) }, horizon: { value: new THREE.Color(0xb9c9e6) } },
+    uniforms: { top: { value: new THREE.Color(SKY.top) }, mid: { value: new THREE.Color(SKY.mid) }, horizon: { value: new THREE.Color(SKY.horizon) } },
     vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: 'uniform vec3 top, mid, horizon; varying vec3 vP; void main(){ float h = max(vP.y, 0.0); vec3 c = mix(horizon, mid, smoothstep(0.0, 0.25, h)); c = mix(c, top, smoothstep(0.25, 1.0, h)); if (vP.y < 0.0) c = mix(horizon, vec3(0.32,0.38,0.5), smoothstep(0.0,-0.2,vP.y)); gl_FragColor = vec4(c, 1.0); }',
+    fragmentShader: 'uniform vec3 top, mid, horizon; varying vec3 vP; void main(){ float h = max(vP.y, 0.0); vec3 c = mix(horizon, mid, smoothstep(0.0, 0.25, h)); c = mix(c, top, smoothstep(0.25, 1.0, h)); if (vP.y < 0.0) c = mix(horizon, vec3(0.32,0.38,0.5) * ' + (night ? '0.12' : '1.0') + ', smoothstep(0.0,-0.2,vP.y)); gl_FragColor = vec4(c, 1.0); }',
   }));
   dome.frustumCulled = false;
   scene.add(dome);
@@ -140,16 +141,21 @@ function addTwilightSky(scene, renderer, { domeRadius = 900, shadowExtent = 60 }
   // equirectangular gradient matching the dome, so mirrors reflect a blue twilight sky
   const c = document.createElement('canvas'); c.width = 512; c.height = 256;
   const ctx = c.getContext('2d'), grad = ctx.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#0f2a6b'); grad.addColorStop(0.3, '#3d66b8'); grad.addColorStop(0.49, '#b9c9e6');
-  grad.addColorStop(0.52, '#55604a'); grad.addColorStop(1, '#2c3324');
+  if (night) {
+    grad.addColorStop(0, '#02040c'); grad.addColorStop(0.3, '#050a1a'); grad.addColorStop(0.49, '#101a30');
+    grad.addColorStop(0.52, '#0a0d0a'); grad.addColorStop(1, '#050605');
+  } else {
+    grad.addColorStop(0, '#0f2a6b'); grad.addColorStop(0.3, '#3d66b8'); grad.addColorStop(0.49, '#b9c9e6');
+    grad.addColorStop(0.52, '#55604a'); grad.addColorStop(1, '#2c3324');
+  }
   ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.encoding = THREE.sRGBEncoding;
   scene.environment = new THREE.PMREMGenerator(renderer).fromEquirectangular(tex).texture;
 
-  scene.add(new THREE.HemisphereLight(0xb8cdf5, 0x3c4630, 0.55));
-  const key = new THREE.DirectionalLight(0xdfe8ff, 1.3);
+  scene.add(new THREE.HemisphereLight(0xb8cdf5, 0x3c4630, SKY.hemi));
+  const key = new THREE.DirectionalLight(0xdfe8ff, SKY.key);
   key.position.set(-0.6, 0.8, -0.4).multiplyScalar(shadowExtent * 1.6);
   key.castShadow = true;
   key.shadow.mapSize.set(4096, 4096);

@@ -45,7 +45,7 @@ function initArray(SITE) {
   $('view').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xa6b9dc, SITE.fog[0], SITE.fog[1]);
+  scene.fog = new THREE.Fog(0x101a30, SITE.fog[0], SITE.fog[1]);
   const cam = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.3, 80000);
   const controls = new THREE.OrbitControls(cam, renderer.domElement);
   controls.enableDamping = true;
@@ -53,7 +53,7 @@ function initArray(SITE) {
   controls.maxDistance = SITE.maxDistance;
   const M = makeMaterials();
   const [cE, cN] = SITE.center;
-  const key = addTwilightSky(scene, renderer, { domeRadius: 60000, shadowExtent: SITE.shadowExtent });
+  const key = addTwilightSky(scene, renderer, { domeRadius: 60000, shadowExtent: SITE.shadowExtent, night: true });
   key.target.position.copy(world(cE, cN));
   key.position.add(key.target.position);
 
@@ -334,9 +334,9 @@ function initArray(SITE) {
   }
 
   const axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v(0, 0, 0), v(0, 1, 0)]),
-    new THREE.LineBasicMaterial({ color: 0x9fe6ff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
+    new THREE.LineBasicMaterial({ color: 0x4d8cff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
   const frontGlow = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 12),
-    new THREE.MeshBasicMaterial({ color: 0xcff4ff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
+    new THREE.MeshBasicMaterial({ color: 0x7fb0ff, transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
   // light pool: a grid draped on the terrain, textured with the radial photon density of each shower
   const poolCanvas = document.createElement('canvas'); poolCanvas.width = poolCanvas.height = 256;
   const poolTex = new THREE.CanvasTexture(poolCanvas);
@@ -355,7 +355,7 @@ function initArray(SITE) {
     for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
       const r = Math.hypot(x - 127.5, y - 127.5) / 128;
       const a = r >= 1 ? 0 : Math.sqrt(rhoCherenkov(r * Rv, E) / peak) * (1 - smoothstep(0.85, 1, r));
-      img.data.set([140, 225, 255, 255 * a], (y * 256 + x) * 4);
+      img.data.set([50, 110, 255, 255 * a], (y * 256 + x) * 4);
     }
     g.putImageData(img, 0, 0);
     poolTex.needsUpdate = true;
