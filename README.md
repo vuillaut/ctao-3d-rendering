@@ -31,3 +31,10 @@ Each model mixes published values with estimates from photos. The summaries list
 - `SHOWER_MODEL.md`: the air-shower physics used on the array pages (shower maximum, light pool, photoelectrons, trigger, timing), with sources.
 
 The terrain, roads, vegetation and landmarks are illustrative. The shower model follows published scaling laws but is a simplified, closed-form model, not a full simulation.
+
+## License
+
+- The code (HTML, CSS and JavaScript, including the 3D models they build) is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). See `LICENSE` and `NOTICE`.
+- The documentation (`*.md`) and the images in `img/` are licensed under the [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/) license (CC BY 4.0). See `LICENSE-CC-BY-4.0`.
+
+You can share, adapt and reuse the work, including commercially, as long as you credit it: cite this repository and its author, and keep the license notices.
