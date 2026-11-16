@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How the models work · CTAO 3D</title>
+  <meta name="description"
+    content="How the 3D telescope models are built, and the simplified physical model of gamma-ray air showers used on the array pages.">
+  <style>
+    :root {
+      --bg: #0d1a3a;
+      --card: rgba(255, 255, 255, 0.05);
+      --text: #e4e9f2;
+      --muted: #93a0b8;
+      --accent: #5cc8ff;
+      --border: rgba(255, 255, 255, 0.14);
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, sans-serif;
+    }
+
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 48px 16px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin: 0 0 8px;
+    }
+
+    h2 {
+      font-size: 21px;
+      margin: 44px 0 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 16px;
+      margin: 24px 0 4px;
+      color: var(--accent);
+    }
+
+    p.lead,
+    .muted {
+      color: var(--muted);
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 4px;
+      font-size: 0.92em;
+    }
+
+    ul {
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+
+    th {
+      background: var(--card);
+    }
+
+    .note {
+      margin: 20px 0;
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .note strong {
+      color: var(--text);
+    }
+
+    nav.top {
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    nav.toc {
+      font-size: 14px;
+      margin: 16px 0 0;
+    }
+
+    nav.toc a {
+      margin-right: 14px;
+    }
+
+    footer {
+      margin-top: 48px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <nav class="top"><a href="index.html">← All models</a></nav>
+    <h1>How the models work</h1>
+    <p class="lead">What the 3D models are made of, and what physics the simulated showers contain. Both are
+      simplified on purpose: the goal is to show how an imaging Cherenkov array works, not to replace a full
+      simulation.</p>
+    <nav class="toc">
+      <a href="#imaging">The principle</a>
+      <a href="#models">3D models</a>
+      <a href="#showers">Shower model</a>
+      <a href="#limits">Limits</a>
+      <a href="#sources">Sources</a>
+    </nav>
+
+    <h2 id="imaging">The principle</h2>
+    <p>A gamma ray hits the upper atmosphere and starts a cascade of electrons, positrons and photons. These
+      particles move faster than light does in air, so they emit Cherenkov light: a blue flash a few nanoseconds
+      long. The light falls on the ground in a disc, the light pool, about 120 m in radius. A telescope inside the
+      pool focuses the flash on a fast camera and records an image of the shower. The shape and orientation of the
+      image give the direction and energy of the gamma ray. Several telescopes seeing the same shower from
+      different places give a stereoscopic view, which sharpens the reconstruction.</p>
+
+    <h2 id="models">The 3D models</h2>
+    <p>Everything is drawn with <a href="https://threejs.org/">three.js</a> (r128), straight from code. There are
+      no imported meshes, no textures from photos and no build step. Open the HTML file and it runs.</p>
+    <ul>
+      <li><strong>Telescopes.</strong> Each type has a builder in <code>js/</code>
+        (<code>lst.js</code>, <code>mst.js</code>, <code>sst.js</code>, plus <code>magic.js</code>). It assembles the
+        dish, the facets, the camera support and the mount from primitives: paraboloids, hexagonal facets, tubes,
+        boxes. The LST has 198 facets, the MST a Davies-Cotton dish, the SST dual-mirror optics.</li>
+      <li><strong>Cameras.</strong> The LST and MST cameras have 1855 pixels. Their positions come from the prod6
+        camera description (<code>js/lstcam.js</code>). The SST camera has 2048 SiPM pixels.</li>
+      <li><strong>Arrays.</strong> <code>js/array.js</code> places the telescopes at their prod6 positions (CTAO-North)
+        or from the prod5 and prod6 layouts (CTAO-South), points them all at the same direction, and adds the
+        terrain, the night sky and the landmarks.</li>
+      <li><strong>Accuracy.</strong> Dimensions and positions come from published values where they exist.
+        Details such as the tower, the drives or the counterweights are estimated from photos. The terrain, roads
+        and vegetation are illustrative. Each telescope has a summary file in the repository that tags every value
+        as sourced or estimated.</li>
+    </ul>
+
+    <h2 id="showers">The shower model</h2>
+    <p>The array pages simulate gamma-ray showers with closed-form formulas. The model reproduces the right trends
+      with energy. It is not CORSIKA or sim_telarray. The full list of values and their sources is in
+      <a href="https://github.com/vuillaut/ctao-3d-rendering/blob/main/SHOWER_MODEL.md"><code>SHOWER_MODEL.md</code></a>.
+    </p>
+
+    <h3>1. Energy</h3>
+    <p>By default, the energy is drawn uniformly in log E, so that every energy range shows up: 15 GeV to 100 TeV at
+      La Palma, 50 GeV to 300 TeV at Paranal. The "realistic" option draws from a Crab-like power law,
+      dN/dE ∝ E<sup>−2.5</sup>, where only about 1 event in 1000 is above 1 TeV.</p>
+
+    <h3>2. Longitudinal development</h3>
+    <p>The depth of the shower maximum follows X<sub>max</sub> = X<sub>0</sub> ln(E/E<sub>c</sub>), with
+      X<sub>0</sub> = 36.7 g/cm² and E<sub>c</sub> = 83 MeV. Higher energy means a deeper shower, about 85 g/cm² more
+      per decade. Each shower gets a random shift of about 35 g/cm². The number of particles along the axis follows
+      the Greisen profile. Cherenkov emission per g/cm² does not depend on altitude, so this profile weights the
+      emission points directly. Depth is converted to altitude with an exponential atmosphere,
+      X(h) = 1030 g/cm² · exp(−h/7.6 km).</p>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Energy</th>
+          <th>X<sub>max</sub> (g/cm²)</th>
+          <th>Height of maximum (vertical)</th>
+        </tr>
+        <tr><td>20 GeV</td><td>220</td><td>12.4 km a.s.l.</td></tr>
+        <tr><td>100 GeV</td><td>260</td><td>10.5 km</td></tr>
+        <tr><td>1 TeV</td><td>345</td><td>8.3 km</td></tr>
+        <tr><td>10 TeV</td><td>429</td><td>6.7 km</td></tr>
+        <tr><td>100 TeV</td><td>514</td><td>5.3 km</td></tr>
+      </table>
+    </div>
+
+    <h3>3. Light on the ground</h3>
+    <p>Inside the pool the model gives about 90 photons/m² per TeV (300–550 nm) at about 2000 m. The pool radius is
+      about 120 m, set by the Cherenkov angle and the height of emission. The lateral profile is flat inside the
+      ring with a hump at 120 m. It falls off outside the ring over a length that grows slowly with energy. Above
+      1 TeV a core peak appears, because deeper showers fill in the centre. The light pool drawn on the ground uses
+      this same profile, so it grows and brightens with energy.</p>
+
+    <h3>4. In each telescope</h3>
+    <ul>
+      <li><strong>Photoelectrons.</strong> Photon density × effective mirror area × 10%. The 10% covers the
+        atmosphere, the mirrors and the photodetectors. Mirror areas: LST 369 m², MST 88 m², SST about 6 m².</li>
+      <li><strong>Image.</strong> Emission points along the axis, weighted by the Greisen profile, are projected into
+        each camera. Each point is spread by about 10 m across the axis, which gives an image width of about 0.1° at
+        1 TeV. The image length and its distance from the source position grow with the impact distance.</li>
+      <li><strong>Pixel colours.</strong> Log scale, from faint blue at about 5 photoelectrons to saturated yellow at
+        about 300.</li>
+      <li><strong>Trigger.</strong> At least 50 photoelectrons in the camera, with at least 3 pixels above 5. This
+        gives thresholds of about 20 GeV for the LST, 100 GeV for the MST and 1 TeV for the SST.</li>
+      <li><strong>Timing.</strong> Arrival time = path length from each emission point plus the refractive delay of
+        the air. Near the axis the end of the image nearest the source position arrives last. Beyond about 100 m the
+        order flips. MAGIC has observed this effect. The event display slows time to about 0.12 s per nanosecond
+        inside an image, and compresses delays between telescopes to at most about 1 s.</li>
+    </ul>
+
+    <h3>What this gives</h3>
+    <p>Distance from the shower axis at which a telescope still collects at least 50 photoelectrons:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Energy</th><th>LST</th><th>MST</th><th>SST</th></tr>
+        <tr><td>20 GeV</td><td>140 m</td><td>–</td><td>–</td></tr>
+        <tr><td>100 GeV</td><td>220 m</td><td>160 m</td><td>–</td></tr>
+        <tr><td>1 TeV</td><td>410 m</td><td>320 m</td><td>150 m</td></tr>
+        <tr><td>10 TeV</td><td>720 m</td><td>590 m</td><td>350 m</td></tr>
+        <tr><td>100 TeV</td><td>1250 m</td><td>1070 m</td><td>730 m</td></tr>
+      </table>
+    </div>
+    <p class="muted">At high energy the real limit is often the camera field of view, not the photon count. The model
+      handles this: light that lands outside the camera is lost.</p>
+
+    <h2 id="limits">What is not modelled</h2>
+    <ul>
+      <li>Hadronic background showers (cosmic rays), which dominate real data.</li>
+      <li>Night-sky background noise in the pixels.</li>
+      <li>The angular distribution of the electrons beyond the 10 m lateral spread.</li>
+      <li>The geomagnetic field.</li>
+      <li>Differences in atmospheric absorption between sites.</li>
+      <li>The exact camera trigger logic.</li>
+    </ul>
+    <aside class="note">
+      <strong>Treat the numbers as illustrations.</strong> Some values are cited from the literature, some are
+      derived from first principles, and a few are heuristics tuned to match published anchors.
+      <code>SHOWER_MODEL.md</code> tags each one.
+    </aside>
+
+    <h2 id="sources">Sources</h2>
+    <ul>
+      <li>M. de Naurois &amp; D. Mazin 2015, <em>Ground-based detectors in very-high-energy gamma-ray
+          astronomy</em>: <a href="https://arxiv.org/abs/1511.00463">arXiv:1511.00463</a></li>
+      <li>H. Völk &amp; K. Bernlöhr 2009, <em>Imaging very high energy gamma-ray telescopes</em>:
+        <a href="https://arxiv.org/abs/0812.4198">arXiv:0812.4198</a></li>
+      <li>J. Hinton 2008, <em>Ground-based gamma-ray astronomy with Cherenkov telescopes</em>:
+        <a href="https://arxiv.org/abs/0803.1609">arXiv:0803.1609</a></li>
+      <li>J. Aliu et al. (MAGIC) 2009, timing analysis: <a href="https://arxiv.org/abs/0810.3568">arXiv:0810.3568</a>
+      </li>
+      <li>V. R. Chitnis &amp; P. N. Bhat, Cherenkov lateral distributions:
+        <a href="https://arxiv.org/abs/astro-ph/9802201">arXiv:astro-ph/9802201</a></li>
+      <li>CTAO overview: <a href="https://arxiv.org/abs/2305.12888">arXiv:2305.12888</a></li>
+      <li>MST status: <a href="https://arxiv.org/abs/2310.02127">arXiv:2310.02127</a></li>
+      <li>H.E.S.S. II Crab spectrum: <a href="https://arxiv.org/abs/1509.02902">arXiv:1509.02902</a></li>
+    </ul>
+
+    <footer>
+      <a href="https://github.com/vuillaut/ctao-3d-rendering">Source code</a> · Thomas Vuillaume
+    </footer>
+  </main>
+</body>
+
+</html>

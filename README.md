@@ -7,6 +7,7 @@ Browser 3D models of CTAO telescopes and of the CTAO-North (La Palma) and CTAO-S
 - `ctao-north.html`: the CTAO-North Alpha configuration (4 LSTs + 9 MSTs) at their prod6 positions, plus MAGIC-I/II, on illustrative terrain.
 - `ctao-south.html`: the CTAO-South Alpha configuration (14 MSTs + 37 SSTs), with the 4 LSTs planned for a later phase as an optional layer and the VLT and ELT as approximate landmarks.
 - `lst.html`, `mst.html`, `sst.html`: standalone telescope models.
+- `about.html`: how the 3D models are built and the physical model of the showers (a readable version of `SHOWER_MODEL.md`).
 
 On both array pages all telescopes point together. Showers are simulated, projected into every camera, and shown in an event display.
 
